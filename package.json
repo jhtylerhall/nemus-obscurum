@@ -1,0 +1,24 @@
+{
+  "name": "nemus-obscurum",
+  "version": "1.0.0",
+  "description": "dark forest esque simulation",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@reduxjs/toolkit": "^2.8.2",
+    "expo": "^53.0.20",
+    "expo-gl": "^15.1.7",
+    "expo-three": "^8.0.0",
+    "nanoid": "^5.1.5",
+    "react-native-gesture-handler": "^2.28.0",
+    "react-native-reanimated": "^4.0.2",
+    "react-redux": "^9.2.0",
+    "three": "^0.166.1"
+  }
+}
