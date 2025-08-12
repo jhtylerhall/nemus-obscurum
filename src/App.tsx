@@ -1,4 +1,5 @@
-import React, { useRef } from 'react';
+import 'react-native-gesture-handler';
+import React, { useRef, useState } from 'react';
 import { Provider } from 'react-redux';
 import { store } from './app/store';
 import { SafeAreaView, View, Text, Button, StyleSheet } from 'react-native';
@@ -14,6 +15,7 @@ function Root() {
   const stats  = useAppSelector(s => s.sim);
   const dispatch = useAppDispatch();
   const engineRef = useRef<Engine | null>(null);
+  const [paused, setPaused] = useState(false);
   if (!engineRef.current) engineRef.current = new Engine({ ...params } as unknown as EngineParams, Math.floor(Math.random()*1e9));
 
   return (
@@ -49,6 +51,15 @@ function Root() {
       </View>
 
       <View style={styles.toolbar}>
+        <Button
+          title={paused ? 'Resume' : 'Pause'}
+          onPress={() => {
+            if (engineRef.current) {
+              engineRef.current.paused = !engineRef.current.paused;
+              setPaused(engineRef.current.paused);
+            }
+          }}
+        />
         <Button title="Reset world" onPress={() => engineRef.current?.reset()} />
       </View>
     </SafeAreaView>
@@ -58,6 +69,7 @@ function Root() {
 export default function App() {
   return (
     <Provider store={store}>
+      {/* @ts-ignore children prop not recognized in current type defs */}
       <GestureHandlerRootView style={{ flex: 1 }}>
         <Root />
       </GestureHandlerRootView>

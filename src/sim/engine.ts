@@ -22,6 +22,7 @@ export class Engine {
   civCount = 0;
   revealsB = 0; revealsS = 0; revealsR = 0;
   killsThisStep = 0; totalKills = 0;
+  paused = false;
 
   constructor(params:EngineParams, seed:number){
     this.params = params;
@@ -88,6 +89,7 @@ export class Engine {
   }
 
   step(){
+    if (this.paused) return;
     this.killsThisStep = 0;
     // expand sphere
     this.radius += this.params.radiusGrowthPerSec/this.params.surveyTickHz;
