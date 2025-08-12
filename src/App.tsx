@@ -1,9 +1,9 @@
 import 'react-native-gesture-handler';
 import React, { useRef, useState } from 'react';
 import { Provider } from 'react-redux';
-import { store } from './app/store';
+import { store } from './state/store';
 import { SafeAreaView, View, Text, Button, StyleSheet } from 'react-native';
-import { useAppDispatch, useAppSelector } from './app/hooks';
+import { useAppDispatch, useAppSelector } from './state/hooks';
 import { setStats } from './features/sim/simSlice';
 import { GLScene } from './gl/Scene';
 import { Engine } from './sim/engine';

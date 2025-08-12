@@ -7,5 +7,8 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true
   },
-  "include": ["src"]
+  "include": [
+    "src"
+  ],
+  "extends": "expo/tsconfig.base"
 }
