@@ -4,7 +4,11 @@
   "description": "dark forest esque simulation",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "expo start",
+    "android": "expo start --android",
+    "ios": "expo start --ios",
+    "typecheck": "tsc --noEmit"
   },
   "keywords": [],
   "author": "",
@@ -20,5 +24,9 @@
     "react-native-reanimated": "^4.0.2",
     "react-redux": "^9.2.0",
     "three": "^0.166.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.22",
+    "typescript": "^5.4.5"
   }
 }
