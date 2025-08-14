@@ -5,7 +5,7 @@ import { store } from './state/store';
 import { SafeAreaView, View, Text, Button, StyleSheet } from 'react-native';
 import { useAppDispatch, useAppSelector } from './state/hooks';
 import { setStats } from './features/sim/simSlice';
-import { GLScene } from './gl/Scene';
+import { GLScene, GLSceneHandle } from './gl/Scene';
 import { Engine } from './sim/engine';
 import type { EngineParams } from './sim/types';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -15,6 +15,7 @@ function Root() {
   const stats  = useAppSelector(s => s.sim);
   const dispatch = useAppDispatch();
   const engineRef = useRef<Engine | null>(null);
+  const sceneRef = useRef<GLSceneHandle>(null);
   const [paused, setPaused] = useState(false);
   if (!engineRef.current) engineRef.current = new Engine({ ...params } as unknown as EngineParams, Math.floor(Math.random()*1e9));
 
@@ -28,10 +29,12 @@ function Root() {
         <Text style={styles.sub}>
           reveals b:{stats.revealsB} s:{stats.revealsS} r:{stats.revealsR} | kills+{stats.killsThisStep} (Σ {stats.totalKills})
         </Text>
+        <Button title="Focus random civ" onPress={() => sceneRef.current?.focusRandom()} />
       </View>
 
       <View style={{ flex: 1 }}>
         <GLScene
+          ref={sceneRef}
           engine={engineRef.current!}
           maxStars={params.maxStars}
           maxCivs={params.maxCivs}
