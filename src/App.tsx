@@ -9,6 +9,8 @@ import { GLScene, GLSceneHandle } from './gl/Scene';
 import { Engine } from './sim/engine';
 import type { EngineParams } from './sim/types';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import 'react-native-gesture-handler';
+import 'react-native-reanimated';
 
 function Root() {
   const params = useAppSelector(s => s.params);
