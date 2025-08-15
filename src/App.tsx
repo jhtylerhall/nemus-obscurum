@@ -1,4 +1,5 @@
 import 'react-native-gesture-handler';
+import 'react-native-reanimated';
 import React, { useRef, useState } from 'react';
 import { Provider } from 'react-redux';
 import { store } from './state/store';
@@ -6,11 +7,10 @@ import { SafeAreaView, View, Text, Button, StyleSheet } from 'react-native';
 import { useAppDispatch, useAppSelector } from './state/hooks';
 import { setStats } from './features/sim/simSlice';
 import { GLScene, GLSceneHandle } from './gl/Scene';
+import { POIBar } from './ui/POIBar';
 import { Engine } from './sim/engine';
 import type { EngineParams } from './sim/types';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import 'react-native-gesture-handler';
-import 'react-native-reanimated';
 
 function Root() {
   const params = useAppSelector(s => s.params);
@@ -18,12 +18,20 @@ function Root() {
   const dispatch = useAppDispatch();
   const engineRef = useRef<Engine | null>(null);
   const sceneRef = useRef<GLSceneHandle>(null);
+  const items = [
+    { key: 'home',      label: 'Home',      onPress: () => sceneRef.current?.home() },
+    { key: 'strong',    label: 'Strongest', onPress: () => sceneRef.current?.focusStrongest() },
+    { key: 'frontier',  label: 'Frontier',  onPress: () => sceneRef.current?.focusFrontier() },
+    { key: 'densest',   label: 'Densest',   onPress: () => sceneRef.current?.focusDensest() },
+    { key: 'nearest',   label: 'Nearest',   onPress: () => sceneRef.current?.focusNearest() },
+    { key: 'random',    label: 'Random',    onPress: () => sceneRef.current?.focusRandom() },
+  ];
   const [paused, setPaused] = useState(false);
   if (!engineRef.current) engineRef.current = new Engine({ ...params } as unknown as EngineParams, Math.floor(Math.random()*1e9));
 
   return (
     <SafeAreaView style={styles.root}>
-      <View style={styles.header}>
+       <View style={styles.header}>
         <Text style={styles.title}>Dark Grove — GL Advanced</Text>
         <Text style={styles.sub}>
           t={stats.step} | alive {stats.alive}/{stats.totalCivs} | r={stats.radius.toFixed(2)} | fps~{stats.fps}
@@ -33,6 +41,7 @@ function Root() {
         </Text>
         <Button title="Focus random civ" onPress={() => sceneRef.current?.focusRandom()} />
       </View>
+      <POIBar items={items} style={{ paddingTop: 4 }} />
 
       <View style={{ flex: 1 }}>
         <GLScene

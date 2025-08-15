@@ -1,7 +1,7 @@
 import type { EngineView } from './types';
 
 type MaybeArr = Float32Array | Uint8Array | Int32Array | number[] | undefined;
-const num = (a: MaybeArr, i: number, def = 0) => (a ? Number((a as any)[i] ?? def) : def);
+const num = (a: MaybeArr, i: number, d = 0) => (a ? Number((a as any)[i] ?? d) : d);
 const pick = <T extends MaybeArr>(...c: T[]): T | undefined => { for (const x of c) if (x != null) return x; return undefined; };
 const pickNum = (...c: any[]) => { for (const x of c) if (typeof x === 'number') return x as number; return 0; };
 
@@ -16,15 +16,9 @@ function getStarAccessor(raw: any) {
     else starCount = Math.min(sx?.length ?? 0, sy?.length ?? 0, sz?.length ?? 0);
   }
   if (sPos && (sPos as any).length >= starCount * 3) {
-    return {
-      starCount,
-      get: (i: number) => [num(sPos, i * 3), num(sPos, i * 3 + 1), num(sPos, i * 3 + 2)] as [number, number, number],
-    };
+    return { starCount, get: (i: number) => [num(sPos, i * 3), num(sPos, i * 3 + 1), num(sPos, i * 3 + 2)] as [number, number, number] };
   }
-  return {
-    starCount,
-    get: (i: number) => [num(sx, i), num(sy, i), num(sz, i)] as [number, number, number],
-  };
+  return { starCount, get: (i: number) => [num(sx, i), num(sy, i), num(sz, i)] as [number, number, number] };
 }
 
 function getCivAccessor(raw: any) {
@@ -34,13 +28,12 @@ function getCivAccessor(raw: any) {
   const cPos = pick(raw.cPos, raw.civPos, raw.cPositions);
   const cAlive = pick(raw.cAlive, raw.civAlive, raw.alive);
   const cStrat = pick(raw.cStrat, raw.civStrat, raw.strat);
-  const cTech = pick(raw.cT, raw.civTech, raw.tech);
-  const cRev = pick(raw.cRevealed, raw.civRevealed, raw.revealed);
-  let civCount = pickNum(raw.civCount);
-  if (!civCount) {
-    if (cPos && (cPos as any).length % 3 === 0) civCount = (cPos as any).length / 3;
-    else civCount = Math.min(cx?.length ?? 0, cy?.length ?? 0, cz?.length ?? 0);
-  }
+  const cTech  = pick(raw.cT, raw.civTech, raw.tech);
+  const cRev   = pick(raw.cRevealed, raw.civRevealed, raw.revealed);
+
+  let civCount = raw.civCount ?? (cPos ? (cPos as any).length / 3 : 0);
+  if (!civCount) civCount = Math.min(cx?.length ?? 0, cy?.length ?? 0, cz?.length ?? 0);
+
   const pos =
     cPos
       ? (i: number) => [num(cPos, i * 3), num(cPos, i * 3 + 1), num(cPos, i * 3 + 2)] as [number, number, number]
@@ -62,8 +55,7 @@ export function adaptEngine(raw: any): EngineView {
   let acc = 0;
   const step = (dt: number) => {
     if (typeof raw.stepN === 'function') {
-      acc += dt;
-      const steps = Math.floor(acc * 60);
+      acc += dt; const steps = Math.floor(acc * 60);
       if (steps > 0) { raw.stepN(steps); acc -= steps / 60; }
     } else if (typeof raw.step === 'function') {
       raw.step.length >= 1 ? raw.step(dt) : raw.step();
@@ -75,28 +67,28 @@ export function adaptEngine(raw: any): EngineView {
     starCount: stars.starCount,
     civCount: civ.civCount,
     step,
-    getStar: (i) => stars.get(i),
-    isCivAlive: (i) => civ.isAlive(i),
-    getCivPos: (i) => civ.pos(i),
-    getCivStrat: (i) => civ.strat(i),
-    getCivTech: (i) => civ.tech(i),
-    isCivRevealed: (i) => civ.revealed(i),
+    getStar: stars.get,
+    isCivAlive: civ.isAlive,
+    getCivPos: civ.pos,
+    getCivStrat: civ.strat,
+    getCivTech: civ.tech,
+    isCivRevealed: civ.revealed,
   };
 }
 
-// Deterministic downsample of alive civs (for minimap) without allocs every frame
+// Downsample alive civs for the minimap (deterministic stride)
 export function sampleCivs(raw: any, max = 800): [number, number][] {
   const out: [number, number][] = [];
   const pos = (raw.civPos ?? raw.cPos) as Float32Array | undefined;
   const alive = (raw.civAlive ?? raw.cAlive) as Uint8Array | undefined;
   const n = raw.civCount ?? (pos ? pos.length / 3 : 0);
   if (!n || !pos) return out;
-  // stride picks roughly n/max items; keep deterministic
   const stride = Math.max(1, Math.floor(n / Math.max(1, max)));
   for (let i = 0, picked = 0; i < n && picked < max; i += stride) {
     if (alive && !alive[i]) continue;
-    out.push([pos[i * 3], pos[i * 3 + 2]]); // XZ plane for top-down
+    out.push([pos[i * 3], pos[i * 3 + 2]]); // XZ plane
     picked++;
   }
   return out;
 }
+
