@@ -41,8 +41,6 @@ function Root() {
         </Text>
         <Button title="Focus random civ" onPress={() => sceneRef.current?.focusRandom()} />
       </View>
-      <POIBar items={items} style={{ paddingTop: 4 }} />
-
       <View style={{ flex: 1 }}>
         <GLScene
           ref={sceneRef}
@@ -62,6 +60,9 @@ function Root() {
             }
           }}
         />
+        <View pointerEvents="box-none" style={{ position: 'absolute', top: 4, alignSelf: 'center' }}>
+          <POIBar items={items} />
+        </View>
       </View>
 
       <View style={styles.toolbar}>

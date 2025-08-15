@@ -14,7 +14,14 @@ export const POIBar: React.FC<{ items: POIItem[]; style?: ViewStyle }> = ({ item
 );
 
 const styles = StyleSheet.create({
-  row: { paddingHorizontal: 12, paddingVertical: 6, gap: 8 },
-  chip: { backgroundColor: '#17203a', borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6, borderWidth: 1, borderColor: '#2a3c66' },
-  chipText: { color: '#cfe1ff', fontWeight: '600' },
+  row: { paddingHorizontal: 8, paddingVertical: 4, gap: 6 },
+  chip: {
+    backgroundColor: '#17203a',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderWidth: 1,
+    borderColor: '#2a3c66',
+  },
+  chipText: { color: '#cfe1ff', fontWeight: '600', fontSize: 12 },
 });

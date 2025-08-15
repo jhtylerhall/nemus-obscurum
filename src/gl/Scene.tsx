@@ -238,7 +238,7 @@ export const GLScene = React.forwardRef<GLSceneHandle, Props>(function GLScene(
 
   return (
     <GestureDetector gesture={gestures}>
-      <View style={{ flex: 1, position: 'relative' }} onLayout={onLayout}>
+      <View style={{ flex: 1, position: 'relative', borderWidth: 2, borderColor: '#112b11' }} onLayout={onLayout}>
         <GLView
           style={{ flex: 1 }}
           onContextCreate={(gl) => {
@@ -489,12 +489,13 @@ export const GLScene = React.forwardRef<GLSceneHandle, Props>(function GLScene(
 
         {/* Overlays */}
         <Vignette opacity={0.55} />
-        <View style={{ position: 'absolute', top: 8, right: 8, flexDirection: 'row', gap: 8 }} pointerEvents="box-none">
-          <Compass yaw={overlay.current.cam.yaw} pitch={overlay.current.cam.pitch} />
+        <View style={{ position: 'absolute', top: 8, right: 8, flexDirection: 'row', gap: 4 }} pointerEvents="box-none">
+          <Compass yaw={overlay.current.cam.yaw} pitch={overlay.current.cam.pitch} size={72} />
           <MiniMap
             radius={(engine as any).radius ?? 100}
             cameraPos={{ x: overlay.current.cam.x, z: overlay.current.cam.z, yaw: overlay.current.cam.yaw }}
             civXY={overlay.current.civ}
+            size={100}
             onSelect={(x, z) => jumpToWorldXY(x, z)}
           />
         </View>
