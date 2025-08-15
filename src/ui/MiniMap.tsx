@@ -1,23 +1,24 @@
 import React from 'react';
 import { View } from 'react-native';
-import Svg, { Circle, Line } from 'react-native-svg';
+import Svg, { Circle, Line, Rect } from 'react-native-svg';
 
 type XY = [number, number];
 
 type Props = {
-  radius: number;         // world radius (engine.radius)
-  cameraPos: { x: number; z: number; yaw: number };  // yaw radians
-  civXY: XY[];            // downsampled alive civ positions in XY=> XZ plane
-  size?: number;          // px
+  radius: number;
+  cameraPos: { x: number; z: number; yaw: number };
+  civXY: XY[];
+  size?: number;
+  onSelect?: (x: number, z: number) => void;
 };
 
-export const MiniMap: React.FC<Props> = ({ radius, cameraPos, civXY, size = 140 }) => {
+export const MiniMap: React.FC<Props> = ({ radius, cameraPos, civXY, size = 140, onSelect }) => {
   const r = size / 2;
-  const worldToMap = (x: number, z: number) => {
-    const pad = 10;
-    const s = (r - pad) / Math.max(1, radius);
-    return { x: r + x * s, y: r + z * s };
-  };
+  const pad = 10;
+  const s = (r - pad) / Math.max(1, radius);
+
+  const worldToMap = (x: number, z: number) => ({ x: r + x * s, y: r + z * s });
+  const mapToWorld = (mx: number, my: number) => ({ x: (mx - r) / s, z: (my - r) / s });
 
   return (
     <View style={{ width: size, height: size }}>
@@ -39,6 +40,15 @@ export const MiniMap: React.FC<Props> = ({ radius, cameraPos, civXY, size = 140 
             </>
           );
         })()}
+        <Rect
+          x={0} y={0} width={size} height={size} fill="transparent"
+          onPress={(e: any) => {
+            if (!onSelect) return;
+            const { locationX, locationY } = e.nativeEvent;
+            const w = mapToWorld(locationX, locationY);
+            onSelect(w.x, w.z);
+          }}
+        />
       </Svg>
     </View>
   );
