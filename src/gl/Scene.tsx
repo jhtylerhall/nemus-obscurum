@@ -1,4 +1,3 @@
-// src/gl/Scene.tsx
 import React, { useEffect, useRef, useImperativeHandle } from "react";
 import { View, PixelRatio, LayoutChangeEvent } from "react-native";
 import { GLView } from "expo-gl";
@@ -7,21 +6,23 @@ import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { MiniMap } from "../ui/MiniMap";
 import { Compass } from "../ui/Compass";
 import { Vignette } from "../ui/Vignette";
+import { CoordsHUD } from "../ui/CoordsHUD";
 import { adaptEngine, sampleCivs } from "./engineAdapter";
 import { pickStrongest, pickFrontier, pickNearest, pickDensest } from "./poi";
 
-// ---------- Settings ----------
-const DEBUG_USE_BUILTIN_POINTS = false;
+// ---------- Tunables ----------
 const CAMERA_FAR = 5000;
+const STAR_U_SCALE = 220.0;       // bigger point size at distance
+const STAR_U_MAX   = 24.0;        // px * pixelRatio
+const CIV_U_MAX    = 28.0;        // px * pixelRatio
+const GUIDE_BEACONS = 10;         // how many “safety” markers when scene is empty
 
-// ---------- helpers ----------
+// ---------- small helpers ----------
 function markNeedsUpdate(geom: THREE.BufferGeometry, key: string) {
   const attr = geom.getAttribute(key) as THREE.BufferAttribute | THREE.InterleavedBufferAttribute | undefined;
-  if (attr && "needsUpdate" in attr) {
-    // @ts-ignore
-    attr.needsUpdate = true;
-  }
+  if (attr && "needsUpdate" in attr) { /* @ts-ignore */ attr.needsUpdate = true; }
 }
+function seeded(seed: number) { let s = seed | 0; return () => ((s = (1664525 * s + 1013904223) | 0) >>> 0) / 4294967296; }
 
 // ---------- shaders ----------
 const VERT = `
@@ -44,9 +45,7 @@ void main(){
   gl_FragColor = vec4(vColor, a);
 }`;
 
-// ---------- background (complete) ----------
-function seeded(seed: number) { let s = seed | 0; return () => ((s = (1664525 * s + 1013904223) | 0) >>> 0) / 4294967296; }
-
+// ---------- background: parallax stars + soft nebula ----------
 function makeOuterStars(n: number, R: number) {
   const g = new THREE.BufferGeometry();
   const p = new Float32Array(n * 3);
@@ -58,7 +57,7 @@ function makeOuterStars(n: number, R: number) {
     const sinPhi = Math.sqrt(Math.max(0, 1 - cosPhi * cosPhi));
     const r = R * (0.94 + 0.12 * Math.random());
     p[i * 3 + 0] = r * sinPhi * Math.cos(theta);
-    p[i * 3 + 1] = r * cosPhi * 0.6; // galactic squish
+    p[i * 3 + 1] = r * cosPhi * 0.6;
     p[i * 3 + 2] = r * sinPhi * Math.sin(theta);
     const t = Math.random();
     c[i * 3 + 0] = 0.75 + 0.25 * t * 0.2;
@@ -72,30 +71,22 @@ function makeOuterStars(n: number, R: number) {
   mesh.frustumCulled = false;
   return mesh;
 }
-
 function makeNebulaSprite(size: number, tint: THREE.ColorRepresentation, seed = 1) {
   const rnd = seeded(seed);
   const data = new Uint8Array(size * size * 4);
   const cx = size / 2, cy = size / 2, R = size * 0.5;
-  for (let y = 0; y < size; y++) {
-    for (let x = 0; x < size; x++) {
-      const dx = (x - cx) / R, dy = (y - cy) / R;
-      const d = Math.sqrt(dx * dx + dy * dy);
-      const fall = Math.max(0, 1 - d);
-      const noise = 0.6 * rnd() + 0.4 * rnd();
-      const a = Math.pow(fall, 1.5) * Math.pow(noise, 1.2);
-      const i = (y * size + x) * 4;
-      data[i + 0] = 255; data[i + 1] = 255; data[i + 2] = 255; data[i + 3] = Math.floor(255 * a);
-    }
+  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+    const dx = (x - cx) / R, dy = (y - cy) / R;
+    const d = Math.sqrt(dx * dx + dy * dy);
+    const fall = Math.max(0, 1 - d);
+    const noise = 0.6 * rnd() + 0.4 * rnd();
+    const a = Math.pow(fall, 1.5) * Math.pow(noise, 1.2);
+    const i = (y * size + x) * 4;
+    data[i+0]=255; data[i+1]=255; data[i+2]=255; data[i+3]=Math.floor(255*a);
   }
-  const tex = new THREE.DataTexture(data, size, size);
-  tex.needsUpdate = true;
-  const mat = new THREE.SpriteMaterial({
-    map: tex, color: new THREE.Color(tint),
-    opacity: 0.45, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false,
-  });
-  const sprite = new THREE.Sprite(mat);
-  sprite.scale.setScalar(R * 8);
+  const tex = new THREE.DataTexture(data, size, size); tex.needsUpdate = true;
+  const mat = new THREE.SpriteMaterial({ map: tex, color: new THREE.Color(tint), opacity: 0.45, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false });
+  const sprite = new THREE.Sprite(mat); sprite.scale.setScalar(R * 8);
   return sprite;
 }
 
@@ -111,21 +102,15 @@ export type GLSceneHandle = {
   jumpToWorldXY(x: number, z: number): void;
 };
 
-type Props = {
-  engine: any;
-  maxStars: number;
-  maxCivs: number;
-  onFps?: (fps: number) => void;
-};
+type Props = { engine: any; maxStars: number; maxCivs: number; onFps?: (fps: number) => void; };
 
 export const GLScene = React.forwardRef<GLSceneHandle, Props>(function GLScene(
-  { engine, maxStars, maxCivs, onFps },
-  ref
+  { engine, maxStars, maxCivs, onFps }, ref
 ) {
   const E = adaptEngine(engine);
 
-  // camera orbiting a target
-  const cam = useRef({ yaw: 0, pitch: 0, dist: 20, fov: (60 * Math.PI) / 180 });
+  // orbit camera around a target
+  const cam = useRef({ yaw: Math.PI * 0.15, pitch: Math.PI * 0.12, dist: 20, fov: (60 * Math.PI) / 180 });
   const lookAt = useRef(new THREE.Vector3(0, 0, 0));
   const focusTween = useRef({ active: false, t: 0, from: new THREE.Vector3(), to: new THREE.Vector3(), dist: 20 });
 
@@ -136,46 +121,45 @@ export const GLScene = React.forwardRef<GLSceneHandle, Props>(function GLScene(
     const { width, height } = e.nativeEvent.layout;
     viewSize.current.w = width; viewSize.current.h = height;
     const r = rendererOnLayout.current;
-    if (r?.renderer) {
-      r.renderer.setSize(Math.max(1, Math.floor(width * r.pr)), Math.max(1, Math.floor(height * r.pr)), false);
-    }
+    if (r?.renderer) r.renderer.setSize(Math.max(1, Math.floor(width * r.pr)), Math.max(1, Math.floor(height * r.pr)), false);
   };
 
-  // picking
-  const threeRefs = useRef<{ camera?: THREE.PerspectiveCamera; civPoints?: THREE.Points; civIndexMap?: Int32Array; raycaster?: THREE.Raycaster; bgStars?: THREE.Points; nebulas?: THREE.Sprite[]; }>({});
+  // picking/refs
+  const threeRefs = useRef<{ camera?: THREE.PerspectiveCamera; civPoints?: THREE.Points; civIndexMap?: Int32Array; raycaster?: THREE.Raycaster; bgStars?: THREE.Points; nebulas?: THREE.Sprite[]; grid?: THREE.GridHelper; axes?: THREE.AxesHelper; beacons?: THREE.Points; }>({});
 
   // overlay refs (throttled)
-  const overlay = useRef({ civ: [] as [number, number][], lastUpdate: 0, cam: { x: 0, z: 0, yaw: 0, pitch: 0 } });
+  const overlay = useRef({ civ: [] as [number, number][], lastUpdate: 0, cam: { x: 0, y: 0, z: 0, yaw: 0, pitch: 0, dist: 20 } });
+
+  // focus bookkeeping
+  const focusedIdx = useRef<number | null>(null);
+  const focusPulse = useRef(0);
 
   // gestures (Pan/Pinch/Tap)
   const panPrev = useRef({ tx: 0, ty: 0 });
-  const panGesture = Gesture.Pan()
-    .runOnJS(true)
-    .onStart(() => { focusTween.current.active = false; panPrev.current.tx = 0; panPrev.current.ty = 0; })
+  const panGesture = Gesture.Pan().runOnJS(true)
+    .onStart(() => { focusTween.current.active = false; panPrev.current = { tx: 0, ty: 0 }; })
     .onUpdate((e) => {
       const dx = e.translationX - panPrev.current.tx;
       const dy = e.translationY - panPrev.current.ty;
-      panPrev.current.tx = e.translationX; panPrev.current.ty = e.translationY;
+      panPrev.current = { tx: e.translationX, ty: e.translationY };
       const k = 0.002;
       cam.current.yaw += dx * k;
-      cam.current.pitch = Math.max(-Math.PI / 2 + 0.02, Math.min(Math.PI / 2 - 0.02, cam.current.pitch - dy * k));
+      cam.current.pitch = Math.max(-Math.PI/2+0.02, Math.min(Math.PI/2-0.02, cam.current.pitch - dy * k));
     })
-    .onEnd(() => { panPrev.current.tx = 0; panPrev.current.ty = 0; });
+    .onEnd(() => { panPrev.current = { tx: 0, ty: 0 }; });
 
   const pinchScaleLast = useRef(1);
-  const pinchGesture = Gesture.Pinch()
-    .runOnJS(true)
+  const pinchGesture = Gesture.Pinch().runOnJS(true)
     .onStart(() => { pinchScaleLast.current = 1; focusTween.current.active = false; })
     .onUpdate((e) => {
       const factor = e.scale / (pinchScaleLast.current || 1);
       pinchScaleLast.current = e.scale;
       const nfov = cam.current.fov / factor;
-      cam.current.fov = Math.max((20 * Math.PI) / 180, Math.min((100 * Math.PI) / 180, nfov));
+      cam.current.fov = Math.max((20*Math.PI)/180, Math.min((100*Math.PI)/180, nfov));
     })
     .onEnd(() => { pinchScaleLast.current = 1; });
 
-  const tapGesture = Gesture.Tap()
-    .numberOfTaps(1).maxDeltaX(16).maxDeltaY(16).runOnJS(true)
+  const tapGesture = Gesture.Tap().numberOfTaps(1).maxDeltaX(16).maxDeltaY(16).runOnJS(true)
     .onEnd((e, ok) => {
       if (!ok) return;
       const { camera, civPoints, raycaster, civIndexMap } = threeRefs.current;
@@ -183,7 +167,7 @@ export const GLScene = React.forwardRef<GLSceneHandle, Props>(function GLScene(
       const { w, h } = viewSize.current;
       const ndc = new THREE.Vector2((e.x / w) * 2 - 1, -(e.y / h) * 2 + 1);
       raycaster.setFromCamera(ndc, camera);
-      (raycaster.params as any).Points = { threshold: 0.12 * PixelRatio.get() };
+      (raycaster.params as any).Points = { threshold: 0.14 * PixelRatio.get() };
       const hits = raycaster.intersectObject(civPoints, false);
       if (!hits.length) return;
       const idx = (hits[0] as any).index ?? -1;
@@ -205,12 +189,17 @@ export const GLScene = React.forwardRef<GLSceneHandle, Props>(function GLScene(
     if (i < 0 || i >= E.civCount || !E.isCivAlive(i)) return;
     const p = E.getCivPos(i);
     const target = new THREE.Vector3(p[0], p[1], p[2]);
-    const d = Math.max(8, Math.min(160, target.length() * 1.6));
+    const d = Math.max(12, Math.min(200, target.length() * 1.8)); // safe visibility
     startFocusTo(target, d);
+    focusedIdx.current = i;
+    focusPulse.current = 0;
   }
   function home() {
-    const r = (engine as any).radius ?? 20;
+    const r = (engine as any).radius ?? 50;
+    cam.current.yaw = Math.PI * 0.15;
+    cam.current.pitch = Math.PI * 0.12;
     startFocusTo(new THREE.Vector3(0, 0, 0), Math.max(20, r * 2.2));
+    focusedIdx.current = null;
   }
   function focusStrongest() { const i = pickStrongest(engine); if (i >= 0) focusCiv(i); }
   function focusFrontier()  { const i = pickFrontier(engine);  if (i >= 0) focusCiv(i); }
@@ -221,33 +210,30 @@ export const GLScene = React.forwardRef<GLSceneHandle, Props>(function GLScene(
   }
   function jumpToWorldXY(x: number, z: number) {
     const target = new THREE.Vector3(x, 0, z);
-    const d = Math.max(8, Math.min(160, target.length() * 1.6));
+    const d = Math.max(12, Math.min(200, target.length() * 1.8));
     startFocusTo(target, d);
+    focusedIdx.current = null;
   }
 
-  // expose API
   useImperativeHandle(ref, () => ({
-    focusCiv, focusRandom: () => { let t=200; while (t--) { const r = (Math.random() * E.civCount) | 0; if (E.isCivAlive(r)) { focusCiv(r); return; } } },
+    focusCiv, focusRandom: () => { let t=200; while (t--) { const r = (Math.random()*E.civCount)|0; if (E.isCivAlive(r)) { focusCiv(r); return; } } },
     home, focusStrongest, focusFrontier, focusDensest, focusNearest, jumpToWorldXY,
   }), [engine]);
 
   useEffect(() => {
-    cam.current = { yaw: 0, pitch: 0, dist: 20, fov: (60 * Math.PI) / 180 };
+    cam.current = { yaw: Math.PI * 0.15, pitch: Math.PI * 0.12, dist: 20, fov: (60 * Math.PI) / 180 };
     lookAt.current.set(0, 0, 0);
   }, [engine]);
 
   return (
     <GestureDetector gesture={gestures}>
-      <View style={{ flex: 1, position: 'relative', borderWidth: 2, borderColor: '#112b11' }} onLayout={onLayout}>
+      <View style={{ flex: 1, position: 'relative' }} onLayout={onLayout}>
         <GLView
           style={{ flex: 1 }}
           onContextCreate={(gl) => {
             const canvas: any = {
-              width: gl.drawingBufferWidth,
-              height: gl.drawingBufferHeight,
-              style: {},
-              clientWidth: gl.drawingBufferWidth,
-              clientHeight: gl.drawingBufferHeight,
+              width: gl.drawingBufferWidth, height: gl.drawingBufferHeight, style: {},
+              clientWidth: gl.drawingBufferWidth, clientHeight: gl.drawingBufferHeight,
               addEventListener: () => {}, removeEventListener: () => {},
               getContext: (type: string) => (type.includes("webgl") ? gl : null),
             };
@@ -272,16 +258,15 @@ export const GLScene = React.forwardRef<GLSceneHandle, Props>(function GLScene(
             rendererOnLayout.current = { renderer, pr };
 
             const scene = new THREE.Scene();
-            scene.background = new THREE.Color("#0b1020");
+            scene.background = new THREE.Color("#02050c");
 
             const camera = new THREE.PerspectiveCamera(
               60, gl.drawingBufferWidth / gl.drawingBufferHeight, 0.05, CAMERA_FAR
             );
-            camera.position.set(0, 0, cam.current.dist);
             threeRefs.current.camera = camera;
             threeRefs.current.raycaster = new THREE.Raycaster();
 
-            // cinematic background
+            // background
             const R = ((engine as any).radius ?? 50) * 30;
             const bgStars = makeOuterStars(3000, R);
             scene.add(bgStars);
@@ -295,29 +280,33 @@ export const GLScene = React.forwardRef<GLSceneHandle, Props>(function GLScene(
             threeRefs.current.bgStars = bgStars;
             threeRefs.current.nebulas = [nebA, nebB, nebC];
 
-            // === engine-driven point clouds ===
-            const uniforms = { uPR: { value: pr }, uScale: { value: 140.0 }, uMaxSize: { value: 18.0 * pr } };
+            // grid/axes for orientation
+            const grid = new THREE.GridHelper(((engine as any).radius ?? 50) * 2, 20, 0x254066, 0x15223a);
+            const axes = new THREE.AxesHelper(((engine as any).radius ?? 50) * 0.35);
+            const setOpacity = (obj: THREE.Object3D, opacity: number) => {
+              const mats: any[] = [];
+              obj.traverse((o: any) => { if (o.material) mats.push(o.material); });
+              mats.flat().forEach((m: any) => { m.transparent = true; m.opacity = opacity; });
+            };
+            setOpacity(grid, 0.25); setOpacity(axes, 0.55);
+            scene.add(grid, axes);
+            threeRefs.current.grid = grid; threeRefs.current.axes = axes;
+
+            // uniforms
+            const uniforms = { uPR: { value: pr }, uScale: { value: STAR_U_SCALE }, uMaxSize: { value: STAR_U_MAX * pr } };
+            const civUniforms = { uPR: { value: pr }, uScale: { value: STAR_U_SCALE }, uMaxSize: { value: CIV_U_MAX * pr } };
 
             // Stars
             const starGeom = new THREE.BufferGeometry();
             const starPos = new Float32Array(maxStars * 3);
             const starCol = new Float32Array(maxStars * 3);
             const starSize = new Float32Array(maxStars);
-            for (let i = 0; i < maxStars; i++) {
-              starCol[i * 3 + 0] = 0.82; starCol[i * 3 + 1] = 0.9; starCol[i * 3 + 2] = 1.0;
-              starSize[i] = 1.2;
-            }
+            for (let i = 0; i < maxStars; i++) { starCol[i*3+0]=0.82; starCol[i*3+1]=0.9; starCol[i*3+2]=1.0; starSize[i]=1.6; }
             starGeom.setAttribute("position", new THREE.BufferAttribute(starPos, 3));
             starGeom.setAttribute("aColor",   new THREE.BufferAttribute(starCol, 3));
             starGeom.setAttribute("aSize",    new THREE.BufferAttribute(starSize, 1));
             starGeom.setDrawRange(0, 0);
-            const starMat = DEBUG_USE_BUILTIN_POINTS
-              ? new THREE.PointsMaterial({ size: 6, sizeAttenuation: true, vertexColors: true })
-              : new THREE.ShaderMaterial({ uniforms, vertexShader: VERT, fragmentShader: FRAG, transparent: true, depthWrite: false });
-            if (DEBUG_USE_BUILTIN_POINTS) {
-              starGeom.deleteAttribute?.("aColor");
-              starGeom.setAttribute("color", new THREE.BufferAttribute(starCol, 3));
-            }
+            const starMat = new THREE.ShaderMaterial({ uniforms, vertexShader: VERT, fragmentShader: FRAG, transparent: true, depthWrite: false });
             const starPoints = new THREE.Points(starGeom, starMat);
             starPoints.frustumCulled = false;
             scene.add(starPoints);
@@ -331,13 +320,7 @@ export const GLScene = React.forwardRef<GLSceneHandle, Props>(function GLScene(
             civGeom.setAttribute("aColor",   new THREE.BufferAttribute(civCol, 3));
             civGeom.setAttribute("aSize",    new THREE.BufferAttribute(civSize, 1));
             civGeom.setDrawRange(0, 0);
-            const civMat = DEBUG_USE_BUILTIN_POINTS
-              ? new THREE.PointsMaterial({ size: 8, sizeAttenuation: true, vertexColors: true })
-              : new THREE.ShaderMaterial({ uniforms, vertexShader: VERT, fragmentShader: FRAG, transparent: true, depthWrite: false });
-            if (DEBUG_USE_BUILTIN_POINTS) {
-              civGeom.deleteAttribute?.("aColor");
-              civGeom.setAttribute("color", new THREE.BufferAttribute(civCol, 3));
-            }
+            const civMat = new THREE.ShaderMaterial({ uniforms: civUniforms, vertexShader: VERT, fragmentShader: FRAG, transparent: true, depthWrite: false });
             const civPoints = new THREE.Points(civGeom, civMat);
             civPoints.frustumCulled = false;
             scene.add(civPoints);
@@ -348,42 +331,62 @@ export const GLScene = React.forwardRef<GLSceneHandle, Props>(function GLScene(
             const haloPos = new Float32Array(maxCivs * 3);
             const haloCol = new Float32Array(maxCivs * 3);
             const haloSize = new Float32Array(maxCivs);
-            for (let i = 0; i < maxCivs; i++) {
-              haloCol[i * 3 + 0] = 0.44; haloCol[i * 3 + 1] = 0.89; haloCol[i * 3 + 2] = 1.0;
-            }
+            for (let i = 0; i < maxCivs; i++) { haloCol[i*3+0]=0.44; haloCol[i*3+1]=0.89; haloCol[i*3+2]=1.0; }
             haloGeom.setAttribute("position", new THREE.BufferAttribute(haloPos, 3));
             haloGeom.setAttribute("aColor",   new THREE.BufferAttribute(haloCol, 3));
             haloGeom.setAttribute("aSize",    new THREE.BufferAttribute(haloSize, 1));
             haloGeom.setDrawRange(0, 0);
-            const haloMat = new THREE.ShaderMaterial({
-              vertexShader: VERT, fragmentShader: FRAG, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
-              uniforms,
-            });
+            const haloMat = new THREE.ShaderMaterial({ uniforms: civUniforms, vertexShader: VERT, fragmentShader: FRAG, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
             const haloPoints = new THREE.Points(haloGeom, haloMat);
             haloPoints.frustumCulled = false;
             scene.add(haloPoints);
 
-            // colors
+            // Guide beacons (visible when < 3 civs alive)
+            const beaconGeom = new THREE.BufferGeometry();
+            const beaconPos = new Float32Array(GUIDE_BEACONS * 3);
+            const beaconCol = new Float32Array(GUIDE_BEACONS * 3);
+            const beaconSize = new Float32Array(GUIDE_BEACONS);
+            for (let i=0;i<GUIDE_BEACONS;i++){ beaconCol[i*3+0]=1.0; beaconCol[i*3+1]=0.84; beaconCol[i*3+2]=0.25; beaconSize[i]=8.0; }
+            beaconGeom.setAttribute("position", new THREE.BufferAttribute(beaconPos, 3));
+            beaconGeom.setAttribute("aColor",   new THREE.BufferAttribute(beaconCol, 3));
+            beaconGeom.setAttribute("aSize",    new THREE.BufferAttribute(beaconSize, 1));
+            beaconGeom.setDrawRange(0, 0);
+            const beaconMat = new THREE.ShaderMaterial({ uniforms: civUniforms, vertexShader: VERT, fragmentShader: FRAG, transparent: true, depthWrite: false });
+            const beacons = new THREE.Points(beaconGeom, beaconMat);
+            beacons.frustumCulled = false;
+            scene.add(beacons);
+            threeRefs.current.beacons = beacons;
+
+            // palette
             const colSilent = [0.60, 0.65, 1.00];
             const colBroad  = [1.00, 0.82, 0.40];
             const colCaut   = [0.32, 1.00, 0.66];
             const colPree   = [1.00, 0.42, 0.42];
 
-            // pre-warm engine & upload initial stars
-            if (typeof (engine as any).stepN === "function") (engine as any).stepN(120);
+            // warm-up + initial stars
+            if (typeof (engine as any).stepN === "function") (engine as any).stepN(90);
             for (let i = 0; i < E.starCount; i++) {
               const s = E.getStar(i);
-              starPos[i * 3 + 0] = s[0]; starPos[i * 3 + 1] = s[1]; starPos[i * 3 + 2] = s[2];
+              starPos[i*3+0]=s[0]; starPos[i*3+1]=s[1]; starPos[i*3+2]=s[2];
             }
             markNeedsUpdate(starGeom, "position");
             starGeom.setDrawRange(0, E.starCount);
             starGeom.computeBoundingSphere();
             let lastStarCount = E.starCount;
 
-            // index map for picking
+            // pick indices map
             const civIndexMap = new Int32Array(maxCivs);
             civIndexMap.fill(-1);
             threeRefs.current.civIndexMap = civIndexMap;
+
+            // auto-frame on first content
+            const rs = (engine as any).radius ?? 0;
+            if ((rs <= 0) && starGeom.boundingSphere) {
+              const bs = starGeom.boundingSphere;
+              lookAt.current.copy(bs.center); cam.current.dist = Math.max(20, Math.min(300, bs.radius * 1.8));
+            } else if (rs > 0) {
+              cam.current.dist = Math.max(20, rs * 2.0);
+            }
 
             // loop
             let last = Date.now(), ema = 60;
@@ -394,16 +397,22 @@ export const GLScene = React.forwardRef<GLSceneHandle, Props>(function GLScene(
 
               E.step(dt);
 
+              // pulse
+              if (focusedIdx.current != null) {
+                focusPulse.current += dt * 2.0;
+                if (focusPulse.current > Math.PI * 2) focusPulse.current -= Math.PI * 2;
+              }
+
               // focus tween
               if (focusTween.current.active) {
-                focusTween.current.t = Math.min(1, focusTween.current.t + dt * 2.5); // ~0.4s
+                focusTween.current.t = Math.min(1, focusTween.current.t + dt * 2.5);
                 const t = focusTween.current.t;
                 lookAt.current.lerpVectors(focusTween.current.from, focusTween.current.to, t);
                 cam.current.dist += (focusTween.current.dist - cam.current.dist) * 0.25;
                 if (t >= 1 - 1e-3) focusTween.current.active = false;
               }
 
-              // camera position from spherical around lookAt
+              // camera from spherical
               const { yaw, pitch, dist } = cam.current;
               const cx = lookAt.current.x + dist * Math.cos(pitch) * Math.cos(yaw);
               const cy = lookAt.current.y + dist * Math.sin(pitch);
@@ -413,18 +422,11 @@ export const GLScene = React.forwardRef<GLSceneHandle, Props>(function GLScene(
               camera.position.set(cx, cy, cz);
               camera.lookAt(lookAt.current);
 
-              // parallax on nebulas (subtle)
-              const nebs = threeRefs.current.nebulas || [];
-              for (let i = 0; i < nebs.length; i++) {
-                const s = 0.02 + i * 0.01;
-                nebs[i].position.addScaledVector(camera.position, s * 0.0);
-              }
-
-              // expanding stars
+              // stars expanding
               if (E.starCount > lastStarCount) {
                 for (let i = lastStarCount; i < E.starCount; i++) {
                   const s = E.getStar(i);
-                  starPos[i * 3 + 0] = s[0]; starPos[i * 3 + 1] = s[1]; starPos[i * 3 + 2] = s[2];
+                  starPos[i*3+0]=s[0]; starPos[i*3+1]=s[1]; starPos[i*3+2]=s[2];
                 }
                 markNeedsUpdate(starGeom, "position");
                 starGeom.setDrawRange(0, E.starCount);
@@ -433,30 +435,38 @@ export const GLScene = React.forwardRef<GLSceneHandle, Props>(function GLScene(
               }
 
               // civs + halos
-              let ci = 0, hi = 0;
+              let ci = 0, hi = 0, aliveCnt = 0;
               for (let i = 0; i < E.civCount; i++) {
                 if (!E.isCivAlive(i)) continue;
+                aliveCnt++;
                 const p = E.getCivPos(i);
-                civPos[ci * 3 + 0] = p[0]; civPos[ci * 3 + 1] = p[1]; civPos[ci * 3 + 2] = p[2];
+                civPos[ci*3+0]=p[0]; civPos[ci*3+1]=p[1]; civPos[ci*3+2]=p[2];
 
                 const strat = E.getCivStrat(i);
                 const c =
                   strat === 0 ? colSilent :
                   strat === 1 ? colBroad  :
                   strat === 2 ? colCaut   : colPree;
-                civCol[ci * 3 + 0] = c[0]; civCol[ci * 3 + 1] = c[1]; civCol[ci * 3 + 2] = c[2];
-                civSize[ci] = 2.0 + Math.min(4.0, E.getCivTech(i) * 1.2);
+                civCol[ci*3+0]=c[0]; civCol[ci*3+1]=c[1]; civCol[ci*3+2]=c[2];
+
+                let sz = 2.0 + Math.min(4.0, E.getCivTech(i) * 1.2);
+                if (focusedIdx.current === i) {
+                  const pulse = 0.5 + 0.5 * Math.sin(focusPulse.current);
+                  sz += 4.0 * pulse;
+                  civCol[ci*3+0] = 1.0; civCol[ci*3+1] = 0.9; civCol[ci*3+2] = 0.6; // gold tint
+                }
+                civSize[ci] = sz;
 
                 civIndexMap[ci] = i; ci++;
 
                 if (E.isCivRevealed(i)) {
-                  haloPos[hi * 3 + 0] = p[0]; haloPos[hi * 3 + 1] = p[1]; haloPos[hi * 3 + 2] = p[2];
-                  haloSize[hi] = 2.0 + Math.min(4.0, E.getCivTech(i) * 1.2) + 4.0;
+                  haloPos[hi*3+0]=p[0]; haloPos[hi*3+1]=p[1]; haloPos[hi*3+2]=p[2];
+                  haloSize[hi] = (2.0 + Math.min(4.0, E.getCivTech(i) * 1.2)) + 4.0;
                   hi++;
                 }
               }
               markNeedsUpdate(civGeom, "position");
-              markNeedsUpdate(civGeom, DEBUG_USE_BUILTIN_POINTS ? "color" : "aColor");
+              markNeedsUpdate(civGeom, "aColor");
               markNeedsUpdate(civGeom, "aSize");
               civGeom.setDrawRange(0, ci);
               civGeom.computeBoundingSphere();
@@ -466,8 +476,25 @@ export const GLScene = React.forwardRef<GLSceneHandle, Props>(function GLScene(
               haloGeom.setDrawRange(0, hi);
               haloGeom.computeBoundingSphere();
 
-              // overlays: throttle
-              overlay.current.cam = { x: camera.position.x, z: camera.position.z, yaw: cam.current.yaw, pitch: cam.current.pitch };
+              // guide beacons if scene is too empty
+              const bGeom = threeRefs.current.beacons!.geometry as THREE.BufferGeometry;
+              const bPos = (bGeom.getAttribute("position") as THREE.BufferAttribute).array as Float32Array;
+              let bCount = 0;
+              if (aliveCnt < 3) {
+                const baseR = Math.max(8, ((engine as any).radius ?? 20) * 0.6);
+                for (let i=0; i<GUIDE_BEACONS; i++) {
+                  const a = (i / GUIDE_BEACONS) * Math.PI * 2;
+                  const r = baseR * (0.8 + 0.3 * Math.sin(i*2.1));
+                  const x = r * Math.cos(a), z = r * Math.sin(a);
+                  bPos[i*3+0] = x; bPos[i*3+1] = 0; bPos[i*3+2] = z;
+                  bCount++;
+                }
+              }
+              if (bCount>0) { markNeedsUpdate(bGeom, "position"); bGeom.setDrawRange(0, bCount); }
+              else { bGeom.setDrawRange(0, 0); }
+
+              // overlays (throttle)
+              overlay.current.cam = { x: camera.position.x, y: camera.position.y, z: camera.position.z, yaw: cam.current.yaw, pitch: cam.current.pitch, dist };
               const tNow = Date.now();
               if (tNow - overlay.current.lastUpdate > 100) {
                 overlay.current.civ = sampleCivs(engine, 800);
@@ -478,9 +505,7 @@ export const GLScene = React.forwardRef<GLSceneHandle, Props>(function GLScene(
               gl.endFrameEXP();
 
               const fps = 1000 / Math.max(16, Date.now() - now);
-              ema = ema * 0.9 + fps * 0.1;
-              onFps?.(Math.round(ema));
-
+              ema = ema * 0.9 + fps * 0.1; onFps?.(Math.round(ema));
               requestAnimationFrame(loop);
             };
             loop();
@@ -488,18 +513,19 @@ export const GLScene = React.forwardRef<GLSceneHandle, Props>(function GLScene(
         />
 
         {/* Overlays */}
-        <Vignette opacity={0.55} />
-        <View style={{ position: 'absolute', top: 4, right: 4, flexDirection: 'row', gap: 4 }} pointerEvents="box-none">
-          <Compass yaw={overlay.current.cam.yaw} pitch={overlay.current.cam.pitch} size={72} />
+        <Vignette opacity={0.5} />
+        <View style={{ position: 'absolute', top: 8, right: 8, flexDirection: 'row', gap: 8 }} pointerEvents="box-none">
+          <Compass yaw={overlay.current.cam.yaw} pitch={overlay.current.cam.pitch} />
           <MiniMap
             radius={(engine as any).radius ?? 100}
             cameraPos={{ x: overlay.current.cam.x, z: overlay.current.cam.z, yaw: overlay.current.cam.yaw }}
             civXY={overlay.current.civ}
-            size={100}
             onSelect={(x, z) => jumpToWorldXY(x, z)}
           />
         </View>
+        <CoordsHUD cam={overlay.current.cam} radius={(engine as any).radius} />
       </View>
     </GestureDetector>
   );
 });
+
