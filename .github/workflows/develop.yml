@@ -1,8 +1,8 @@
-name: Main → Expo Production
+name: Develop → Expo Staging
 
 on:
   push:
-    branches: [ main ]
+    branches: [ develop ]
 
 jobs:
   build-and-test:
@@ -20,11 +20,11 @@ jobs:
       - name: Health check (non-blocking)
         run: CI=1 npx expo-doctor || echo "expo-doctor warnings (non-blocking)"
 
-      - name: Build Production (EAS)
+      - name: Build Staging (EAS)
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
         run: |
-          npx eas build --platform all --profile production --non-interactive
+          npx eas build --platform all --profile preview --non-interactive
 
       - run: npx expo export:web
 
@@ -34,7 +34,7 @@ jobs:
           name: app-builds
           path: dist/**
 
-  deploy-production:
+  deploy-staging:
     needs: build-and-test
     runs-on: ubuntu-latest
     steps:
@@ -44,7 +44,7 @@ jobs:
           node-version: 20
           cache: 'npm'
       - run: npm ci
-      - name: Publish production update
+      - name: Publish staging update
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-        run: npx eas update --branch production --non-interactive
+        run: npx eas update --branch staging --non-interactive
