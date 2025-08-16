@@ -14,17 +14,23 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
           cache: "npm"
+
       - run: npm ci
+
       - name: Typecheck
-        run: npm run -s typecheck || echo "no typecheck script; skipping"
+        run: npm run --if-present typecheck
+
       - name: Lint
-        run: npm run -s lint || echo "no lint script; skipping"
+        run: npm run --if-present lint
+
       - name: Tests
-        run: npm run -s test:ci || npm test -- --run || echo "no tests; skipping"
+        run: |
+          npm run --if-present test:ci || npm run --if-present test -- --run
 
   update:
     name: Publish update to staging channel
@@ -32,21 +38,26 @@ jobs:
     needs: ci
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
           cache: "npm"
+
       - uses: expo/expo-github-action@8.2.1
         with:
           eas-version: latest
           token: ${{ secrets.EXPO_TOKEN }}
+          packager: npm
+
       - run: npm ci
+
       - name: Expo doctor (non-blocking)
         run: CI=1 npx expo-doctor || true
+
       - name: Publish OTA update to staging
         run: |
-          which eas && eas --version
+          eas --version
           eas update --non-interactive \
-            --branch develop \
             --channel staging \
             --message "staging @ $GITHUB_SHA"
