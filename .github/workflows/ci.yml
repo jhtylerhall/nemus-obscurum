@@ -27,7 +27,7 @@ jobs:
         run: |
           npx eas build --platform all --profile preview --non-interactive
 
-      - run: npx expo export:web
+      - run: EXPO_OFFLINE=1 npx expo export -p web
 
       - name: Upload builds
         uses: actions/upload-artifact@v4
