@@ -1,0 +1,25 @@
+{
+  "expo": {
+    "name": "nemus-obscurum",
+    "slug": "nemus-obscurum",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "jsEngine": "hermes",
+    "platforms": [
+      "ios",
+      "android"
+    ],
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "466ded7b-d143-452a-b0f5-f526b7619abf"
+      }
+    },
+    "owner": "jhtylerhall"
+  }
+}

@@ -4,7 +4,7 @@
   "description": "dark forest esque simulation",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "npm run typecheck",
     "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",
