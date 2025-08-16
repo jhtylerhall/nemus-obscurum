@@ -54,7 +54,8 @@ jobs:
 
       - name: Publish OTA update to sandbox
         run: |
-          npx eas update --non-interactive \
+          which eas && eas --version
+          eas update --non-interactive \
             --branch sandbox \
             --channel sandbox \
             --message "PR #${{ github.event.pull_request.number }} @ $GITHUB_SHA"

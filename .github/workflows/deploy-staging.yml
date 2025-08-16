@@ -45,7 +45,8 @@ jobs:
         run: CI=1 npx expo-doctor || true
       - name: Publish OTA update to staging
         run: |
-          npx eas update --non-interactive \
+          which eas && eas --version
+          eas update --non-interactive \
             --branch develop \
             --channel staging \
             --message "staging @ $GITHUB_SHA"

@@ -45,7 +45,8 @@ jobs:
         run: CI=1 npx expo-doctor || true
       - name: Publish OTA update to production
         run: |
-          npx eas update --non-interactive \
+          which eas && eas --version
+          eas update --non-interactive \
             --branch main \
             --channel production \
             --message "prod @ $GITHUB_SHA"
