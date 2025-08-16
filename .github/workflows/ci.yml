@@ -1,0 +1,44 @@
+name: Expo CI/CD
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 18
+      - run: npm ci
+      - run: npm test
+      - run: npx expo-doctor --fix
+      - name: Build Preview (EAS)
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          npx eas build --platform ios --profile preview --non-interactive
+          npx eas build --platform android --profile preview --non-interactive
+      - run: npx expo export:web
+      - name: Upload builds
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-builds
+          path: dist/**
+
+  live-preview:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 18
+      - run: npm ci
+      - name: Publish update
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: npx eas update --branch preview --non-interactive
