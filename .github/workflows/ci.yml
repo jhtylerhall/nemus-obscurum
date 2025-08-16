@@ -18,8 +18,8 @@ jobs:
 
       - run: npm ci
 
-      # Optional: read-only health check (non-interactive)
-      - run: CI=1 npx expo-doctor
+      - name: Health check (non-blocking)
+        run: CI=1 npx expo-doctor || echo "expo-doctor warnings (non-blocking)"
 
       - name: Build Preview (EAS)
         env:

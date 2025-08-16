@@ -11,7 +11,7 @@
       "env": { "CHANNEL": "sandbox" }
     },
     "production": {
-      "autoIncrement": "patch"
+      "autoIncrement": true
     }
   },
   "submit": { "production": {} }
