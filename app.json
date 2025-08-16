@@ -1,29 +1,18 @@
 {
-  "expo": {
-    "name": "nemus-obscurum",
-    "slug": "nemus-obscurum",
-    "owner": "jhtylerhall",
-    "version": "1.0.0",
-    "orientation": "portrait",
-    "jsEngine": "hermes",
-    "platforms": ["ios", "android"],
-    "assetBundlePatterns": ["**/*"],
-    "runtimeVersion": { "policy": "appVersion" },
-    "updates": {
-      "checkAutomatically": "ON_LOAD",
-      "fallbackToCacheTimeout": 0,
-      "requestHeaders": { "expo-channel-name": "sandbox" }
+  "cli": { "version": ">= 7.0.0" },
+  "build": {
+    "preview": {
+      "developmentClient": true,
+      "distribution": "internal"
     },
-    "ios": {
-      "bundleIdentifier": "com.jhtylerhall.nemusobscurum"
+    "preview-sandbox": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "env": { "CHANNEL": "sandbox" }
     },
-    "android": {
-      "package": "com.jhtylerhall.nemusobscurum"
-    },
-    "extra": {
-      "eas": {
-        "projectId": "466ded7b-d143-452a-b0f5-f526b7619abf"
-      }
+    "production": {
+      "autoIncrement": true 
     }
-  }
+  },
+  "submit": { "production": {} }
 }
