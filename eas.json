@@ -1,18 +1,37 @@
 {
-  "cli": { "version": ">= 7.0.0" },
+  "cli": {
+    "appVersionSource": "remote"
+  },
   "build": {
-    "preview": {
-      "developmentClient": true,
-      "distribution": "internal"
-    },
-    "preview-sandbox": {
-      "developmentClient": true,
-      "distribution": "internal",
-      "env": { "CHANNEL": "sandbox" }
-    },
     "production": {
-      "autoIncrement": true
+      "android": { "gradleCommand": ":app:bundleRelease" },
+      "ios": { "simulator": false }
+    },
+    "staging": {
+      "developmentClient": false
+    },
+    "preview": {
+      "developmentClient": false
     }
   },
-  "submit": { "production": {} }
+  "submit": {
+    "production": {
+      "ios": { "appleId": "you@example.com" },
+      "android": {}
+    }
+  },
+  "update": {
+    "production": {
+      "channel": "production",
+      "env": { "EXPO_PUBLIC_ENV": "production" }
+    },
+    "staging": {
+      "channel": "staging",
+      "env": { "EXPO_PUBLIC_ENV": "staging" }
+    },
+    "preview": {
+      "channel": "sandbox",
+      "env": { "EXPO_PUBLIC_ENV": "sandbox" }
+    }
+  }
 }

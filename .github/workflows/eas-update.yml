@@ -1,0 +1,89 @@
+name: EAS Update
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  update-pr:
+    name: PR → sandbox channel
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - run: npm ci
+
+      - name: Expo login
+        uses: expo/expo-github-action@v12
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      # Use a unique branch per PR so rollbacks/history are clean, but same channel "sandbox"
+      - name: Publish OTA to sandbox
+        run: |
+          PR_BRANCH="pr-${{ github.event.pull_request.number }}"
+          MSG="PR #${{ github.event.pull_request.number }}: ${{ github.event.pull_request.title }} (${{
+            github.sha }})"
+          npx eas update --branch "$PR_BRANCH" --profile preview --message "$MSG" --non-interactive
+
+  update-develop:
+    name: develop → staging channel
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/develop' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - run: npm ci
+
+      - name: Expo login
+        uses: expo/expo-github-action@v12
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Publish OTA to staging
+        run: |
+          MSG="develop: ${{ github.event.head_commit.message }} (${{ github.sha }})"
+          npx eas update --branch develop --profile staging --message "$MSG" --non-interactive
+
+  update-main:
+    name: main → production channel (+ optional store build)
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - run: npm ci
+
+      - name: Expo login
+        uses: expo/expo-github-action@v12
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Publish OTA to production
+        run: |
+          MSG="main: ${{ github.event.head_commit.message }} (${{ github.sha }})"
+          npx eas update --branch main --profile production --message "$MSG" --non-interactive
+
+      # ---- OPTIONAL: kick off store builds on main ----
+      # Requires iOS/Android credentials set up in EAS and (optionally) auto-submit config.
+      # - name: Build & submit (iOS/Android)
+      #   run: |
+      #     npx eas build --platform all --profile production --non-interactive --auto-submit
