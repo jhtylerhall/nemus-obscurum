@@ -10,9 +10,7 @@
     "assetBundlePatterns": ["**/*"],
     "runtimeVersion": { "policy": "appVersion" },
     "updates": {
-      "checkAutomatically": "ON_LOAD",
-      "fallbackToCacheTimeout": 0,
-      "requestHeaders": { "expo-channel-name": "sandbox" }
+      "url": "https://u.expo.dev/466ded7b-d143-452a-b0f5-f526b7619abf"
     },
     "ios": { "bundleIdentifier": "com.jhtylerhall.nemusobscurum" },
     "android": { "package": "com.jhtylerhall.nemusobscurum" },

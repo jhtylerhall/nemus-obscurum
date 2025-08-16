@@ -1,18 +1,32 @@
 {
-  "cli": { "version": ">= 7.0.0" },
+  "cli": {
+    "version": ">= 8.0.0",
+    "appVersionSource": "remote"
+  },
   "build": {
-    "preview": {
-      "developmentClient": true,
-      "distribution": "internal"
-    },
-    "preview-sandbox": {
-      "developmentClient": true,
-      "distribution": "internal",
-      "env": { "CHANNEL": "sandbox" }
+    "base": {
+      "environment": "production",
+      "node": "20.11.1"
     },
     "production": {
-      "autoIncrement": true
+      "extends": "base",
+      "channel": "production",
+      "autoIncrement": true,
+      "distribution": "store"
+    },
+    "staging": {
+      "extends": "base",
+      "channel": "staging",
+      "distribution": "internal"
+    },
+    "sandbox": {
+      "extends": "base",
+      "channel": "sandbox",
+      "distribution": "internal",
+      "developmentClient": false
     }
   },
-  "submit": { "production": {} }
+  "submit": {
+    "production": {}
+  }
 }
