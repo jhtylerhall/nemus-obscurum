@@ -4,11 +4,14 @@
   "description": "dark forest esque simulation",
   "main": "index.js",
   "scripts": {
-    "test": "npm run typecheck",
     "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",
-    "typecheck": "tsc --noEmit"
+    "lint": "eslint .",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "ci:doctor": "CI=1 expo-doctor || echo \"expo-doctor warnings (non-blocking)\"",
+    "ci:preflight": "npm run lint && npm run typecheck && npm run test"
   },
   "keywords": [],
   "author": "",
@@ -30,6 +33,9 @@
   "devDependencies": {
     "@types/react": "~19.0.10",
     "@types/three": "^0.179.0",
-    "typescript": "~5.8.3"
+    "eslint": "^8.57.0",
+    "expo-doctor": "^1.13.5",
+    "typescript": "~5.8.3",
+    "vitest": "^1.6.0"
   }
 }

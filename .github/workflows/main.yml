@@ -1,0 +1,50 @@
+name: Main → Production (EAS)
+
+on:
+  push:
+    branches: [ main ]
+
+concurrency:
+  group: prod-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  prod:
+    name: Build & Deploy (Android + Update)
+    runs-on: ubuntu-latest
+
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}         # REQUIRED
+      BUILD_IOS: ${{ secrets.BUILD_IOS }}           # optional: "true" to enable iOS build
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Preflight (lint / typecheck / tests)
+        run: npm run ci:preflight
+
+      - name: Expo Doctor (non-blocking)
+        run: npm run ci:doctor
+
+      - name: Publish EAS Update → production
+        if: ${{ env.EXPO_TOKEN != '' }}
+        run: npx eas update --branch production --message "main ${{ github.sha }}" --non-interactive
+
+      - name: EAS Build Android (production)
+        if: ${{ env.EXPO_TOKEN != '' }}
+        run: npx eas build --platform android --profile production --non-interactive
+
+      - name: EAS Build iOS (production) [Optional]
+        if: ${{ env.EXPO_TOKEN != '' && env.BUILD_IOS == 'true' }}
+        run: npx eas build --platform ios --profile production --non-interactive
+

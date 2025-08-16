@@ -1,18 +1,22 @@
 {
-  "cli": { "version": ">= 7.0.0" },
+  "cli": {
+    "version": ">= 12.6.0"
+  },
   "build": {
-    "preview": {
-      "developmentClient": true,
-      "distribution": "internal"
+    "sandbox": {
+      "channel": "sandbox",
+      "developmentClient": true
     },
-    "preview-sandbox": {
-      "developmentClient": true,
-      "distribution": "internal",
-      "env": { "CHANNEL": "sandbox" }
+    "staging": {
+      "channel": "staging",
+      "developmentClient": false
     },
     "production": {
-      "autoIncrement": true
+      "channel": "production",
+      "developmentClient": false
     }
   },
-  "submit": { "production": {} }
+  "submit": {
+    "production": {}
+  }
 }
