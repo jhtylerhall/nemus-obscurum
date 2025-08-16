@@ -5,13 +5,21 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "jsEngine": "hermes",
-    "platforms": ["ios", "android"],
-    "assetBundlePatterns": ["**/*"],
-    "runtimeVersion": { "policy": "appVersion" },
+    "platforms": [
+      "ios",
+      "android"
+    ],
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
     "extra": {
       "eas": {
-        "projectId": "REPLACE_WITH_PROJECT_ID"
+        "projectId": "466ded7b-d143-452a-b0f5-f526b7619abf"
       }
-    }
+    },
+    "owner": "jhtylerhall"
   }
 }
