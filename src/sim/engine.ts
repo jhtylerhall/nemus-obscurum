@@ -23,6 +23,7 @@ export class Engine {
   revealsB = 0; revealsS = 0; revealsR = 0;
   killsThisStep = 0; totalKills = 0;
   paused = false;
+  violence = true;
 
   constructor(params:EngineParams, seed:number){
     this.params = params;
@@ -104,7 +105,7 @@ export class Engine {
       for(let j=0;j<this.civCount;j++) if(i!==j && this.civAlive[j]){
         if(this.detect(i,j)){
           this.revealsS++;
-          this.kill(i,j);
+          if (this.violence) this.kill(i,j);
         }
       }
     }
