@@ -12,7 +12,6 @@ import * as THREE from "three";
 import { GestureDetector } from "react-native-gesture-handler";
 
 import { MiniMap } from "../ui/MiniMap";
-import { Compass } from "../ui/Compass";
 import { Vignette } from "../ui/Vignette";
 import { CoordsHUD } from "../ui/CoordsHUD";
 import { AnalogStick } from "../ui/AnalogStick";
@@ -107,7 +106,7 @@ export const GLScene = React.forwardRef<GLSceneHandle, Props>(function GLScene(
   const overlay = useRef({
     civ: [] as [number, number][],
     lastUpdate: 0,
-    cam: { x: 0, y: 0, z: 0, yaw: 0, pitch: 0, dist: 20 },
+    cam: { x: 0, y: 0, z: 0, yaw: 0, pitch: 0, dist: 20, fov: (60 * Math.PI) / 180 },
   });
 
   const stickL = useRef({ x: 0, y: 0 });
@@ -261,16 +260,13 @@ export const GLScene = React.forwardRef<GLSceneHandle, Props>(function GLScene(
           }}
           pointerEvents="box-none"
         >
-          <Compass
-            yaw={overlay.current.cam.yaw}
-            pitch={overlay.current.cam.pitch}
-          />
           <MiniMap
             radius={(engine as any).radius ?? 100}
             cameraPos={{
               x: overlay.current.cam.x,
               z: overlay.current.cam.z,
               yaw: overlay.current.cam.yaw,
+              fov: overlay.current.cam.fov,
             }}
             civXY={overlay.current.civ}
             onSelect={jumpToWorldXY}

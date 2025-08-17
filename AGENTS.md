@@ -12,7 +12,7 @@ This file is for automation agents (Codex, etc.) and contributors. It documents 
 - **App**: Expo (SDK 53), React Native, React 18, Hermes engine  
 - **Rendering**: `expo-gl` + `three` (WebGL via RN), custom shader point clouds  
 - **Gestures**: `react-native-gesture-handler` (v2), `react-native-reanimated`  
-- **UI overlays**: `react-native-svg` (Compass, MiniMap, HUD)  
+- **UI overlays**: `react-native-svg` (MiniMap, HUD)
 - **State**: Redux Toolkit (light use for sim stats)  
 
 > **Important metro/babel setup**
@@ -33,7 +33,6 @@ src/
     types.ts                    # GL/engine view types
     poi.ts                      # POI strategies: strongest/frontier/densest/nearest
   ui/
-    Compass.tsx                 # Yaw/pitch compass overlay (SVG)
     MiniMap.tsx                 # 2D XZ minimap, tap-to-jump (SVG)
     POIBar.tsx                  # Chip buttons for POI focus actions
     Vignette.tsx                # Soft vignette overlay
@@ -112,7 +111,7 @@ Focus guarantees a **visible distance** and **pulses** the target civ for orient
 
 ## 6) Visual Orientation Aids
 
-- **Compass** (yaw/pitch), **MiniMap** (XZ, tap-to-jump), **HUD** (x,y,z / yaw / pitch / dist).
+- **MiniMap** (XZ, FOV wedge, tap-to-jump), **HUD** (x,y,z / yaw / pitch / dist).
 - **Grid** + **Axes** helpers, semi-transparent.
 - **Parallax background**: outer stars + three soft nebula sprites.
 - **Guide beacons**: show a ring of gold points when too few civs are alive (prevents “empty void”).
