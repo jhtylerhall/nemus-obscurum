@@ -233,7 +233,9 @@ export function initRenderer(gl: any, opts: InitOpts): RendererHandle {
   rendererRef.current = { renderer, pr };
 
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color("#02050c");
+  // Render against the underlying view color so we can verify the star field
+  // isn't hidden by an opaque clear.
+  scene.background = null;
 
   const camera = new THREE.PerspectiveCamera(
     60,

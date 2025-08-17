@@ -208,8 +208,9 @@ export const GLScene = React.forwardRef<GLSceneHandle, Props>(function GLScene(
     camera.far = Math.max(camera.far, 1e9);
     camera.updateProjectionMatrix();
 
-    // optional: set clear color to deep space
-    rendererRef.current?.renderer.setClearColor(0x000006, 1);
+    // optional: set clear color to deep space but keep it transparent so we can
+    // confirm nothing else is overdrawing the stars
+    rendererRef.current?.renderer.setClearColor(0x000006, 0);
 
     // place the camera so the real cluster is visible on boot
     const world = getWorld();
