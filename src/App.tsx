@@ -21,6 +21,7 @@ function Root() {
   const items = [
     { key: 'home',   label: 'Home',       onPress: () => sceneRef.current?.home() },
     { key: 'random', label: 'Random Civ', onPress: () => sceneRef.current?.focusRandom() },
+    { key: 'spawn',  label: 'Spawn Star', onPress: () => sceneRef.current?.spawnStarInView() },
   ];
   const [paused, setPaused] = useState(false);
   const [violent, setViolent] = useState(true);

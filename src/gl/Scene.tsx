@@ -30,6 +30,7 @@ export type GLSceneHandle = {
   focusDensest(): void;
   focusNearest(): void;
   jumpToWorldXY(x: number, z: number): void;
+  spawnStarInView(): void;
 };
 
 type Props = {
@@ -153,6 +154,10 @@ export const GLScene = React.forwardRef<GLSceneHandle, Props>(function GLScene(
         if (i >= 0) rendererHandle.current?.focusCiv(i);
       },
       jumpToWorldXY,
+      spawnStarInView: () => {
+        const f = (threeRefs.current as any).spawnStarInFront;
+        if (typeof f === 'function') f();
+      },
     }),
     [engine, jumpToWorldXY],
   );

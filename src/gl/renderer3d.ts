@@ -28,6 +28,31 @@ function seeded(seed: number) {
   return () => ((s = (1664525 * s + 1013904223) | 0) >>> 0) / 4294967296;
 }
 
+function writeStarToEngine(raw: any, i: number, x: number, y: number, z: number) {
+  if (raw?.starPos && raw.starPos.length >= (i + 1) * 3) {
+    raw.starPos[i * 3 + 0] = x;
+    raw.starPos[i * 3 + 1] = y;
+    raw.starPos[i * 3 + 2] = z;
+  } else if (raw?.sx && raw?.sy && raw?.sz) {
+    raw.sx[i] = x;
+    raw.sy[i] = y;
+    raw.sz[i] = z;
+  } else {
+    // Best effort: create starPos if possible (only if engine exposes capacity hints)
+    if (raw?.params?.maxStars && !raw.starPos) {
+      raw.starPos = new Float32Array(raw.params.maxStars * 3);
+    }
+    if (raw?.starPos && raw.starPos.length >= (i + 1) * 3) {
+      raw.starPos[i * 3 + 0] = x;
+      raw.starPos[i * 3 + 1] = y;
+      raw.starPos[i * 3 + 2] = z;
+    }
+  }
+  if (typeof raw.starCount === 'number') {
+    raw.starCount = Math.max(raw.starCount, i + 1);
+  }
+}
+
 // ---------- shaders ----------
 const VERT = `
 uniform float uPR; uniform float uScale; uniform float uMaxSize;
@@ -351,6 +376,49 @@ export function initRenderer(gl: any, opts: InitOpts): RendererHandle {
   starGeom.setDrawRange(0, E.starCount);
   starGeom.computeBoundingSphere();
   let lastStarCount = E.starCount;
+
+  // Spawns a star directly in front of the current camera at a distance that’s guaranteed to be visible.
+  // Uses engine arrays + our star buffer; never affects civs.
+  const spawnStarInFront = () => {
+    const yaw = cam.current.yaw;
+    const pitch = cam.current.pitch;
+    const worldR = (engine as any).radius ?? 50;
+
+    const camDist = cam.current.dist || 20;
+    const d = Math.max(2.5, Math.min(camDist * 0.66, worldR * 0.9, CAMERA_FAR * 0.5));
+
+    const cx = (threeRefs.current.camera as THREE.PerspectiveCamera).position.x;
+    const cy = (threeRefs.current.camera as THREE.PerspectiveCamera).position.y;
+    const cz = (threeRefs.current.camera as THREE.PerspectiveCamera).position.z;
+
+    const fx = Math.cos(pitch) * Math.cos(yaw);
+    const fy = Math.sin(pitch);
+    const fz = Math.cos(pitch) * Math.sin(yaw);
+
+    const x = cx + fx * d;
+    const y = cy + fy * d;
+    const z = cz + fz * d;
+
+    let idx = Math.max((engine as any).starCount ?? 0, (E as any).starCount ?? 0);
+    const cap = starPos.length / 3;
+    if (idx >= cap) idx = cap - 1;
+
+    writeStarToEngine(engine, idx, x, y, z);
+    (E as any).starCount = Math.max((E as any).starCount ?? 0, idx + 1);
+
+    starPos[idx * 3 + 0] = x;
+    starPos[idx * 3 + 1] = y;
+    starPos[idx * 3 + 2] = z;
+    const posAttr = starGeom.getAttribute('position');
+    // @ts-ignore
+    posAttr.needsUpdate = true;
+
+    const drawN = Math.max(starGeom.drawRange?.count ?? 0, idx + 1, (E as any).starCount ?? 0);
+    starGeom.setDrawRange(0, drawN);
+    starGeom.computeBoundingSphere?.();
+  };
+
+  (threeRefs.current as any).spawnStarInFront = spawnStarInFront;
 
   // pick indices map
   const civIndexMap = new Int32Array(maxCivs);
