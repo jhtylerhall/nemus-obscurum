@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useImperativeHandle } from "react";
+import React, { useEffect, useRef, useImperativeHandle, useState } from "react";
 import { View, PixelRatio, LayoutChangeEvent } from "react-native";
 import { GLView } from "expo-gl";
 import * as THREE from "three";
@@ -8,11 +8,12 @@ import { Compass } from "../ui/Compass";
 import { Vignette } from "../ui/Vignette";
 import { CoordsHUD } from "../ui/CoordsHUD";
 import { AnalogStick } from "../ui/AnalogStick";
+import { EdgePointer } from "../ui/EdgePointer";
 import { adaptEngine, sampleCivs } from "./engineAdapter";
 import { pickStrongest, pickFrontier, pickNearest, pickDensest } from "./poi";
 
 // ---------- Tunables ----------
-const CAMERA_FAR = 5000;
+const CAMERA_FAR = 8000; // generous far plane
 const STAR_U_SCALE = 220.0;       // bigger point size at distance
 const STAR_U_MAX   = 24.0;        // px * pixelRatio
 const CIV_U_MAX    = 28.0;        // px * pixelRatio
@@ -24,6 +25,19 @@ function markNeedsUpdate(geom: THREE.BufferGeometry, key: string) {
   if (attr && "needsUpdate" in attr) { /* @ts-ignore */ attr.needsUpdate = true; }
 }
 function seeded(seed: number) { let s = seed | 0; return () => ((s = (1664525 * s + 1013904223) | 0) >>> 0) / 4294967296; }
+
+function ensureSeed(engine: any) {
+  const starCount = engine.starCount ?? engine.starsCount ?? 0;
+  let anyAlive = false; const N = engine.civCount ?? 0;
+  for (let i = 0; i < N; i++) if (engine.civAlive?.[i] || engine.isCivAlive?.(i)) { anyAlive = true; break; }
+  if (starCount < 50 && typeof engine.spawnRandomStars === "function") engine.spawnRandomStars(15000);
+  if (!anyAlive && typeof engine.spawnRandomCiv === "function") engine.spawnRandomCiv();
+}
+
+function safeFocusDistance(target: THREE.Vector3, worldR?: number) {
+  const base = Math.max(12, worldR ? worldR * 0.6 : target.length() * 1.8);
+  return Math.min(500, base);
+}
 
 // ---------- shaders ----------
 const VERT = `
@@ -126,10 +140,18 @@ export const GLScene = React.forwardRef<GLSceneHandle, Props>(function GLScene(
   };
 
   // picking/refs
-  const threeRefs = useRef<{ camera?: THREE.PerspectiveCamera; civPoints?: THREE.Points; civIndexMap?: Int32Array; raycaster?: THREE.Raycaster; bgStars?: THREE.Points; nebulas?: THREE.Sprite[]; grid?: THREE.GridHelper; axes?: THREE.AxesHelper; beacons?: THREE.Points; }>({});
+  const threeRefs = useRef<{ camera?: THREE.PerspectiveCamera; civPoints?: THREE.Points; civIndexMap?: Int32Array; raycaster?: THREE.Raycaster; bgGroup?: THREE.Group; grid?: THREE.GridHelper; axes?: THREE.AxesHelper; beacons?: THREE.Points; }>({});
 
   // overlay refs (throttled)
   const overlay = useRef({ civ: [] as [number, number][], lastUpdate: 0, cam: { x: 0, y: 0, z: 0, yaw: 0, pitch: 0, dist: 20 } });
+
+  // UI state for edge pointer
+  const [pointerUI, setPointerUI] = useState({ show: false, x: 0, y: 0, angleDeg: 0 });
+  const pointerRef = useRef({ show: false, x: 0, y: 0, angleDeg: 0 });
+  useEffect(() => {
+    const id = setInterval(() => setPointerUI({ ...pointerRef.current }), 66);
+    return () => clearInterval(id);
+  }, []);
 
   // analog sticks
   const stickL = useRef({ x: 0, y: 0 });
@@ -169,7 +191,8 @@ export const GLScene = React.forwardRef<GLSceneHandle, Props>(function GLScene(
     if (i < 0 || i >= E.civCount || !E.isCivAlive(i)) return;
     const p = E.getCivPos(i);
     const target = new THREE.Vector3(p[0], p[1], p[2]);
-    const d = Math.max(12, Math.min(200, target.length() * 1.8)); // safe visibility
+    const worldR = (engine as any).radius;
+    const d = safeFocusDistance(target, worldR);
     startFocusTo(target, d);
     focusedIdx.current = i;
     focusPulse.current = 0;
@@ -190,13 +213,22 @@ export const GLScene = React.forwardRef<GLSceneHandle, Props>(function GLScene(
   }
   function jumpToWorldXY(x: number, z: number) {
     const target = new THREE.Vector3(x, 0, z);
-    const d = Math.max(12, Math.min(200, target.length() * 1.8));
+    const worldR = (engine as any).radius;
+    const d = safeFocusDistance(target, worldR);
     startFocusTo(target, d);
     focusedIdx.current = null;
   }
 
   useImperativeHandle(ref, () => ({
-    focusCiv, focusRandom: () => { let t=200; while (t--) { const r = (Math.random()*E.civCount)|0; if (E.isCivAlive(r)) { focusCiv(r); return; } } },
+    focusCiv, focusRandom: () => {
+      let t = 200;
+      while (t--) { const r = (Math.random() * E.civCount) | 0; if (E.isCivAlive(r)) { focusCiv(r); return; } }
+      for (let i = 0; i < E.civCount; i++) if (E.isCivAlive(i)) { focusCiv(i); return; }
+      if (typeof (engine as any).spawnRandomCiv === "function") {
+        const idx = (engine as any).spawnRandomCiv();
+        if (idx >= 0) focusCiv(idx);
+      }
+    },
     home, focusStrongest, focusFrontier, focusDensest, focusNearest, jumpToWorldXY,
   }), [engine]);
 
@@ -238,7 +270,7 @@ export const GLScene = React.forwardRef<GLSceneHandle, Props>(function GLScene(
             rendererOnLayout.current = { renderer, pr };
 
             const scene = new THREE.Scene();
-            scene.background = new THREE.Color("#02050c");
+            scene.background = new THREE.Color("#050a18");
 
             const camera = new THREE.PerspectiveCamera(
               60, gl.drawingBufferWidth / gl.drawingBufferHeight, 0.05, CAMERA_FAR
@@ -246,19 +278,20 @@ export const GLScene = React.forwardRef<GLSceneHandle, Props>(function GLScene(
             threeRefs.current.camera = camera;
             threeRefs.current.raycaster = new THREE.Raycaster();
 
-            // background
+            // parallax background
+            const bg = new THREE.Group();
             const R = ((engine as any).radius ?? 50) * 30;
-            const bgStars = makeOuterStars(3000, R);
-            scene.add(bgStars);
-            const nebA = makeNebulaSprite(256, "#6cc3ff", 1);
-            const nebB = makeNebulaSprite(256, "#f48fb1", 2);
-            const nebC = makeNebulaSprite(256, "#88f7c5", 3);
-            nebA.position.set(-R * 0.4,  R * 0.15, -R * 0.6);
-            nebB.position.set( R * 0.6, -R * 0.25,  R * 0.2);
-            nebC.position.set(-R * 0.2, -R * 0.3,   R * 0.7);
-            scene.add(nebA, nebB, nebC);
-            threeRefs.current.bgStars = bgStars;
-            threeRefs.current.nebulas = [nebA, nebB, nebC];
+            const farA = makeOuterStars(2200, R);
+            const farB = makeOuterStars(1500, R * 1.2);
+            const nebA = makeNebulaSprite(256, "#6cc3ff", 1); nebA.position.set(-R * 0.4,  R * 0.15, -R * 0.6);
+            const nebB = makeNebulaSprite(256, "#f48fb1", 2); nebB.position.set( R * 0.6, -R * 0.25,  R * 0.2);
+            const nebC = makeNebulaSprite(256, "#88f7c5", 3); nebC.position.set(-R * 0.2, -R * 0.3,   R * 0.7);
+            bg.add(farA, farB, nebA, nebB, nebC);
+            scene.add(bg);
+            threeRefs.current.bgGroup = bg;
+
+            // Make sure there's content
+            ensureSeed(engine);
 
             // grid/axes for orientation
             const grid = new THREE.GridHelper(((engine as any).radius ?? 50) * 2, 20, 0x254066, 0x15223a);
@@ -376,6 +409,7 @@ export const GLScene = React.forwardRef<GLSceneHandle, Props>(function GLScene(
               last = now;
 
               E.step(dt);
+              ensureSeed(engine);
 
               // pulse
               if (focusedIdx.current != null) {
@@ -412,6 +446,9 @@ export const GLScene = React.forwardRef<GLSceneHandle, Props>(function GLScene(
               camera.updateProjectionMatrix();
               camera.position.set(cx, cy, cz);
               camera.lookAt(lookAt.current);
+              if (threeRefs.current.bgGroup) {
+                threeRefs.current.bgGroup.position.copy(camera.position).multiplyScalar(0.02);
+              }
 
               // stars expanding
               if (E.starCount > lastStarCount) {
@@ -467,6 +504,36 @@ export const GLScene = React.forwardRef<GLSceneHandle, Props>(function GLScene(
               haloGeom.setDrawRange(0, hi);
               haloGeom.computeBoundingSphere();
 
+              // off-screen edge pointer to nearest civ
+              let nearestIdx = -1; let bestD2 = Infinity; const cx2 = camera.position.x, cy2 = camera.position.y, cz2 = camera.position.z;
+              for (let i = 0; i < E.civCount; i++) {
+                if (!E.isCivAlive(i)) continue;
+                const p = E.getCivPos(i);
+                const dx = p[0]-cx2, dy = p[1]-cy2, dz = p[2]-cz2;
+                const d2 = dx*dx + dy*dy + dz*dz;
+                if (d2 < bestD2) { bestD2 = d2; nearestIdx = i; }
+              }
+              let showPtr = false, px = 0, py = 0, angleDeg = 0;
+              if (nearestIdx >= 0) {
+                const p = E.getCivPos(nearestIdx);
+                const v = new THREE.Vector3(p[0], p[1], p[2]).project(camera);
+                const { w, h } = viewSize.current;
+                const ndcX = v.x, ndcY = v.y;
+                const onScreen = ndcX > -1 && ndcX < 1 && ndcY > -1 && ndcY < 1 && v.z > -1 && v.z < 1;
+                if (!onScreen) {
+                  const m = 22 / Math.min(w, h);
+                  let x = ndcX, y = ndcY;
+                  if (v.z > 1) { x = -x; y = -y; }
+                  const t = Math.max(Math.abs(x)/(1-m), Math.abs(y)/(1-m));
+                  const ex = (x / t) * (1-m), ey = (y / t) * (1-m);
+                  px = ((ex + 1) * 0.5) * w;
+                  py = ((-ey + 1) * 0.5) * h;
+                  angleDeg = Math.atan2(ey, ex) * 180 / Math.PI;
+                  showPtr = true;
+                }
+              }
+              pointerRef.current = { show: showPtr, x: px, y: py, angleDeg };
+
               // guide beacons if scene is too empty
               const bGeom = threeRefs.current.beacons!.geometry as THREE.BufferGeometry;
               const bPos = (bGeom.getAttribute("position") as THREE.BufferAttribute).array as Float32Array;
@@ -515,6 +582,7 @@ export const GLScene = React.forwardRef<GLSceneHandle, Props>(function GLScene(
           />
         </View>
         <CoordsHUD cam={overlay.current.cam} radius={(engine as any).radius} />
+        <EdgePointer show={pointerUI.show} x={pointerUI.x} y={pointerUI.y} angleDeg={pointerUI.angleDeg} />
         <AnalogStick
           onChange={(x, y) => {
             stickL.current = { x, y };

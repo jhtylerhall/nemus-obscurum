@@ -24,6 +24,9 @@ export class Engine {
   killsThisStep = 0; totalKills = 0;
   paused = false;
   violence = true;
+  // Optional helpers available to UI. If missing, we polyfill below.
+  spawnRandomStars?(n: number): number;
+  spawnRandomCiv?(): number;
 
   constructor(params:EngineParams, seed:number){
     this.params = params;
@@ -127,5 +130,68 @@ export class Engine {
       killsThisStep:this.killsThisStep,
       totalKills:this.totalKills,
     };
+  }
+}
+
+// Polyfills to keep UI controls working even if engine didn't implement them
+// @ts-ignore
+if (typeof Engine.prototype.spawnRandomStars !== 'function') {
+  // @ts-ignore
+  Engine.prototype.spawnRandomStars = function(n: number): number {
+    // @ts-ignore
+    const max = this.params?.maxStars ?? this.starPos.length / 3;
+    // @ts-ignore
+    let add = Math.max(0, Math.min(n | 0, max - this.starCount));
+    if (!add) return 0;
+    // @ts-ignore
+    const R = this.radius || 50;
+    for (let k = 0; k < add; k++) {
+      // @ts-ignore
+      const i = this.starCount++;
+      // @ts-ignore
+      const u = this.rng(); const v = this.rng();
+      const theta = 2 * Math.PI * u;
+      const cosPhi = 2 * v - 1;
+      const sinPhi = Math.sqrt(Math.max(0, 1 - cosPhi * cosPhi));
+      const r = R * Math.cbrt(this.rng());
+      // @ts-ignore
+      this.starPos[i*3+0] = r * sinPhi * Math.cos(theta);
+      // @ts-ignore
+      this.starPos[i*3+1] = r * cosPhi;
+      // @ts-ignore
+      this.starPos[i*3+2] = r * sinPhi * Math.sin(theta);
+    }
+    return add;
+  }
+}
+// @ts-ignore
+if (typeof Engine.prototype.spawnRandomCiv !== 'function') {
+  // @ts-ignore
+  Engine.prototype.spawnRandomCiv = function(): number {
+    // @ts-ignore
+    const max = this.params?.maxCivs ?? this.civPos.length / 3;
+    let slot = -1;
+    for (let i = 0; i < max; i++) { // @ts-ignore
+      if (!this.civAlive[i]) { slot = i; break; }
+    }
+    if (slot < 0) return -1;
+    // @ts-ignore
+    const R = this.radius || 50;
+    // @ts-ignore
+    const u = this.rng(); const v = this.rng();
+    const theta = 2 * Math.PI * u;
+    const cosPhi = 2 * v - 1;
+    const sinPhi = Math.sqrt(Math.max(0, 1 - cosPhi * cosPhi));
+    const r = R * (0.2 + 0.8 * Math.cbrt(this.rng()));
+    const x = r * sinPhi * Math.cos(theta);
+    const y = r * cosPhi;
+    const z = r * sinPhi * Math.sin(theta);
+    // @ts-ignore
+    this.civPos[slot*3+0]=x; this.civPos[slot*3+1]=y; this.civPos[slot*3+2]=z;
+    // @ts-ignore
+    this.civAlive[slot]=1;
+    // @ts-ignore
+    this.civCount = Math.max(this.civCount, slot + 1);
+    return slot;
   }
 }

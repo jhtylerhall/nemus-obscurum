@@ -20,7 +20,19 @@ function Root() {
   const sceneRef = useRef<GLSceneHandle>(null);
   const items = [
     { key: 'home',   label: 'Home',       onPress: () => sceneRef.current?.home() },
-    { key: 'random', label: 'Random Civ', onPress: () => sceneRef.current?.focusRandom() },
+    { key: 'random', label: 'Random Civ', onPress: () => {
+        const e = engineRef.current!;
+        if (typeof e.spawnRandomCiv === 'function') {
+          let any = false; const n = e.civCount ?? 0;
+          for (let i = 0; i < n; i++) {
+            // @ts-ignore
+            if (e.civAlive?.[i] || e.isCivAlive?.(i)) { any = true; break; }
+          }
+          if (!any) e.spawnRandomCiv();
+        }
+        sceneRef.current?.focusRandom();
+      }
+    },
   ];
   const [paused, setPaused] = useState(false);
   const [violent, setViolent] = useState(true);
