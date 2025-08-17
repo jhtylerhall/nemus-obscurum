@@ -1,94 +1,194 @@
-import React, { useEffect, useRef, useImperativeHandle } from "react";
-import { View, PixelRatio, LayoutChangeEvent } from "react-native";
-import { GLView } from "expo-gl";
-import * as THREE from "three";
-import { Gesture, GestureDetector } from "react-native-gesture-handler";
-import { MiniMap } from "../ui/MiniMap";
-import { Compass } from "../ui/Compass";
-import { Vignette } from "../ui/Vignette";
-import { CoordsHUD } from "../ui/CoordsHUD";
-import { AnalogStick } from "../ui/AnalogStick";
-import { adaptEngine, sampleCivs } from "./engineAdapter";
-import { pickStrongest, pickFrontier, pickNearest, pickDensest } from "./poi";
+import React, {
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+} from 'react';
+import { View, PixelRatio, LayoutChangeEvent } from 'react-native';
+import { GLView } from 'expo-gl';
+import * as THREE from 'three';
+import { AnalogStick } from '../ui/AnalogStick';
+import { Compass } from '../ui/Compass';
+import { CoordsHUD } from '../ui/CoordsHUD';
+import { Vignette } from '../ui/Vignette';
+import { pickStrongest, pickFrontier, pickNearest, pickDensest } from './poi';
 
-// ---------- Tunables ----------
-const CAMERA_FAR = 5000;
-const STAR_U_SCALE = 220.0;       // bigger point size at distance
-const STAR_U_MAX   = 24.0;        // px * pixelRatio
-const CIV_U_MAX    = 28.0;        // px * pixelRatio
-const GUIDE_BEACONS = 10;         // how many “safety” markers when scene is empty
+// ---------- Starfield ----------
+const STAR_COUNT = 8000;
+const STAR_SHELL_INNER = 1200;
+const STAR_SHELL_OUTER = 1500;
 
-// ---------- small helpers ----------
-function markNeedsUpdate(geom: THREE.BufferGeometry, key: string) {
-  const attr = geom.getAttribute(key) as THREE.BufferAttribute | THREE.InterleavedBufferAttribute | undefined;
-  if (attr && "needsUpdate" in attr) { /* @ts-ignore */ attr.needsUpdate = true; }
+function randomOnShell(
+  rMin: number,
+  rMax: number,
+  rnd: () => number = Math.random,
+) {
+  const u = rnd() * 2 - 1;
+  const t = rnd() * 2 * Math.PI;
+  const s = Math.sqrt(1 - u * u);
+  const r = rMin + (rMax - rMin) * rnd();
+  return { x: r * s * Math.cos(t), y: r * u, z: r * s * Math.sin(t) };
 }
-function seeded(seed: number) { let s = seed | 0; return () => ((s = (1664525 * s + 1013904223) | 0) >>> 0) / 4294967296; }
 
-// ---------- shaders ----------
-const VERT = `
-uniform float uPR; uniform float uScale; uniform float uMaxSize;
-attribute float aSize; attribute vec3 aColor; varying vec3 vColor;
-void main() {
-  vColor = aColor;
-  vec4 mv = modelViewMatrix * vec4(position, 1.0);
-  float d = max(0.02, -mv.z);
-  float sz = aSize * uPR * (uScale / d);
-  gl_PointSize = clamp(sz, 1.0, uMaxSize);
-  gl_Position = projectionMatrix * mv;
-}`;
-const FRAG = `
-precision mediump float; varying vec3 vColor;
-void main(){
-  vec2 c = gl_PointCoord - vec2(0.5);
-  float r = dot(c,c);
-  float a = smoothstep(0.25, 0.0, r);
-  gl_FragColor = vec4(vColor, a);
-}`;
+type StarField = { mesh: THREE.Points; positions: Float32Array };
 
-// ---------- background: parallax stars + soft nebula ----------
-function makeOuterStars(n: number, R: number) {
-  const g = new THREE.BufferGeometry();
-  const p = new Float32Array(n * 3);
-  const c = new Float32Array(n * 3);
-  for (let i = 0; i < n; i++) {
-    const u = Math.random(), v = Math.random();
-    const theta = 2 * Math.PI * u;
-    const cosPhi = 2 * v - 1;
-    const sinPhi = Math.sqrt(Math.max(0, 1 - cosPhi * cosPhi));
-    const r = R * (0.94 + 0.12 * Math.random());
-    p[i * 3 + 0] = r * sinPhi * Math.cos(theta);
-    p[i * 3 + 1] = r * cosPhi * 0.6;
-    p[i * 3 + 2] = r * sinPhi * Math.sin(theta);
-    const t = Math.random();
-    c[i * 3 + 0] = 0.75 + 0.25 * t * 0.2;
-    c[i * 3 + 1] = 0.82 + 0.18 * t;
-    c[i * 3 + 2] = 0.95 + 0.05 * Math.random();
+function createStarField(
+  scene: THREE.Scene,
+  playerPos: THREE.Vector3,
+): StarField {
+  const geometry = new THREE.BufferGeometry();
+  const positions = new Float32Array(STAR_COUNT * 3);
+  for (let i = 0; i < STAR_COUNT; i++) {
+    const p = randomOnShell(STAR_SHELL_INNER, STAR_SHELL_OUTER);
+    positions[i * 3 + 0] = playerPos.x + p.x;
+    positions[i * 3 + 1] = playerPos.y + p.y;
+    positions[i * 3 + 2] = playerPos.z + p.z;
   }
-  g.setAttribute("position", new THREE.BufferAttribute(p, 3));
-  g.setAttribute("color", new THREE.BufferAttribute(c, 3));
-  const m = new THREE.PointsMaterial({ size: 2, sizeAttenuation: true, vertexColors: true, transparent: true });
-  const mesh = new THREE.Points(g, m);
+  geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geometry.computeBoundingSphere();
+  const material = new THREE.PointsMaterial({
+    size: 2.4,
+    sizeAttenuation: true,
+    transparent: true,
+    opacity: 0.9,
+    depthWrite: false,
+    color: 0xffffff,
+  });
+  const mesh = new THREE.Points(geometry, material);
   mesh.frustumCulled = false;
-  return mesh;
+  scene.add(mesh);
+  return { mesh, positions };
 }
-function makeNebulaSprite(size: number, tint: THREE.ColorRepresentation, seed = 1) {
-  const rnd = seeded(seed);
-  const data = new Uint8Array(size * size * 4);
-  const cx = size / 2, cy = size / 2, R = size * 0.5;
-  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
-    const dx = (x - cx) / R, dy = (y - cy) / R;
-    const d = Math.sqrt(dx * dx + dy * dy);
-    const fall = Math.max(0, 1 - d);
-    const noise = 0.6 * rnd() + 0.4 * rnd();
-    const a = Math.pow(fall, 1.5) * Math.pow(noise, 1.2);
-    const i = (y * size + x) * 4;
-    data[i+0]=255; data[i+1]=255; data[i+2]=255; data[i+3]=Math.floor(255*a);
+
+function recycleStarsAroundPlayer(stars: StarField, playerPos: THREE.Vector3) {
+  const pos = stars.positions;
+  let needsUpdate = false;
+  for (let i = 0; i < STAR_COUNT; i++) {
+    const ix = i * 3;
+    const dx = pos[ix] - playerPos.x;
+    const dy = pos[ix + 1] - playerPos.y;
+    const dz = pos[ix + 2] - playerPos.z;
+    const d2 = dx * dx + dy * dy + dz * dz;
+    if (
+      d2 < STAR_SHELL_INNER * STAR_SHELL_INNER ||
+      d2 > (STAR_SHELL_OUTER + 200) * (STAR_SHELL_OUTER + 200)
+    ) {
+      const p = randomOnShell(STAR_SHELL_OUTER - 100, STAR_SHELL_OUTER);
+      pos[ix] = playerPos.x + p.x;
+      pos[ix + 1] = playerPos.y + p.y;
+      pos[ix + 2] = playerPos.z + p.z;
+      needsUpdate = true;
+    }
   }
-  const tex = new THREE.DataTexture(data, size, size); tex.needsUpdate = true;
-  const mat = new THREE.SpriteMaterial({ map: tex, color: new THREE.Color(tint), opacity: 0.45, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false });
-  const sprite = new THREE.Sprite(mat); sprite.scale.setScalar(R * 8);
-  return sprite;
+  if (needsUpdate) {
+    (
+      stars.mesh.geometry.getAttribute('position') as THREE.BufferAttribute
+    ).needsUpdate = true;
+  }
+}
+
+// ---------- Ship ----------
+type CameraMode = 'chase' | 'cockpit';
+
+const SHIP_MAX_SPEED = 120;
+const SHIP_ACCEL = 60;
+const SHIP_STRAFE_ACCEL = 40;
+const SHIP_DAMPING = 0.98;
+const YAW_RATE = 1.6;
+const PITCH_RATE = 1.2;
+
+interface ShipState {
+  position: THREE.Vector3;
+  velocity: THREE.Vector3;
+  yaw: number;
+  pitch: number;
+  roll: number;
+}
+
+function createShip(): ShipState {
+  return {
+    position: new THREE.Vector3(0, 0, 0),
+    velocity: new THREE.Vector3(),
+    yaw: 0,
+    pitch: 0,
+    roll: 0,
+  };
+}
+
+function updateShip(
+  s: ShipState,
+  leftStick: { x: number; y: number },
+  rightStick: { x: number; y: number },
+  dt: number,
+  fwd: THREE.Vector3,
+  right: THREE.Vector3,
+) {
+  s.yaw += leftStick.x * YAW_RATE * dt;
+  s.pitch += -leftStick.y * PITCH_RATE * dt;
+  s.pitch = Math.max(-Math.PI * 0.47, Math.min(Math.PI * 0.47, s.pitch));
+  s.roll = THREE.MathUtils.lerp(s.roll, -leftStick.x * 0.35, 0.12);
+
+  const thrust = rightStick.y * SHIP_ACCEL;
+  const strafe = rightStick.x * SHIP_STRAFE_ACCEL;
+
+  const cy = Math.cos(s.yaw);
+  const sy = Math.sin(s.yaw);
+  const cp = Math.cos(s.pitch);
+  const sp = Math.sin(s.pitch);
+
+  fwd.set(sy * cp, -sp, -cy * cp).normalize();
+  right.set(cy, 0, sy).normalize();
+
+  s.velocity.addScaledVector(fwd, thrust * dt);
+  s.velocity.addScaledVector(right, strafe * dt);
+
+  const speed = s.velocity.length();
+  if (speed > SHIP_MAX_SPEED) s.velocity.multiplyScalar(SHIP_MAX_SPEED / speed);
+
+  s.velocity.multiplyScalar(Math.pow(SHIP_DAMPING, dt * 60));
+  s.position.addScaledVector(s.velocity, dt);
+}
+
+// ---------- Camera ----------
+let cameraMode: CameraMode = 'chase';
+export function setCameraMode(mode: CameraMode) {
+  cameraMode = mode;
+}
+
+function updateCamera(
+  camera: THREE.Camera,
+  ship: ShipState,
+  fwd: THREE.Vector3,
+  mode: CameraMode,
+) {
+  if (mode === 'chase') {
+    const back = fwd.clone().multiplyScalar(-12);
+    const up = new THREE.Vector3(0, 1, 0).multiplyScalar(4);
+    const camPos = ship.position.clone().add(back).add(up);
+    camera.position.copy(camPos);
+    camera.lookAt(ship.position.clone().add(fwd.clone().multiplyScalar(10)));
+  } else {
+    camera.position.copy(ship.position.clone().add(fwd.clone().multiplyScalar(1.2)));
+    camera.lookAt(ship.position.clone().add(fwd.clone().multiplyScalar(20)));
+  }
+}
+
+// ---------- Ship Mesh ----------
+function makeShipMesh(): THREE.Object3D {
+  const geo = new THREE.ConeGeometry(0.6, 2.4, 6);
+  const mat = new THREE.MeshBasicMaterial({
+    wireframe: true,
+    opacity: 0.8,
+    transparent: true,
+  });
+  const cone = new THREE.Mesh(geo, mat);
+  cone.rotateX(Math.PI / 2);
+  return cone;
+}
+
+// ---------- Utils ----------
+function applyDeadzone(v: number, dz = 0.08) {
+  return Math.abs(v) < dz ? 0 : v;
 }
 
 // ---------- Public API ----------
@@ -103,432 +203,281 @@ export type GLSceneHandle = {
   jumpToWorldXY(x: number, z: number): void;
 };
 
-type Props = { engine: any; maxStars: number; maxCivs: number; onFps?: (fps: number) => void; };
+type Props = {
+  engine: any;
+  maxStars: number;
+  maxCivs: number;
+  onFps?: (fps: number) => void;
+};
 
 export const GLScene = React.forwardRef<GLSceneHandle, Props>(function GLScene(
-  { engine, maxStars, maxCivs, onFps }, ref
+  { engine, onFps },
+  ref,
 ) {
-  const E = adaptEngine(engine);
-
-  // orbit camera around a target
-  const cam = useRef({ yaw: Math.PI * 0.15, pitch: Math.PI * 0.12, dist: 20, fov: (60 * Math.PI) / 180 });
-  const lookAt = useRef(new THREE.Vector3(0, 0, 0));
-  const focusTween = useRef({ active: false, t: 0, from: new THREE.Vector3(), to: new THREE.Vector3(), dist: 20 });
-
-  // renderer sizing
-  const rendererOnLayout = useRef<{ renderer: THREE.WebGLRenderer; pr: number } | null>(null);
+  const leftStick = useRef({ x: 0, y: 0 });
+  const rightStick = useRef({ x: 0, y: 0 });
+  const rendererOnLayout = useRef<{
+    renderer: THREE.WebGLRenderer;
+    pr: number;
+  } | null>(null);
   const viewSize = useRef({ w: 1, h: 1, pr: PixelRatio.get() });
   const onLayout = (e: LayoutChangeEvent) => {
     const { width, height } = e.nativeEvent.layout;
-    viewSize.current.w = width; viewSize.current.h = height;
+    viewSize.current.w = width;
+    viewSize.current.h = height;
     const r = rendererOnLayout.current;
-    if (r?.renderer) r.renderer.setSize(Math.max(1, Math.floor(width * r.pr)), Math.max(1, Math.floor(height * r.pr)), false);
+    if (r?.renderer)
+      r.renderer.setSize(
+        Math.max(1, Math.floor(width * r.pr)),
+        Math.max(1, Math.floor(height * r.pr)),
+        false,
+      );
   };
 
-  // picking/refs
-  const threeRefs = useRef<{ camera?: THREE.PerspectiveCamera; civPoints?: THREE.Points; civIndexMap?: Int32Array; raycaster?: THREE.Raycaster; bgStars?: THREE.Points; nebulas?: THREE.Sprite[]; grid?: THREE.GridHelper; axes?: THREE.AxesHelper; beacons?: THREE.Points; }>({});
+  const [hud, setHud] = useState({
+    x: 0,
+    y: 0,
+    z: 0,
+    yaw: 0,
+    pitch: 0,
+    speed: 0,
+  });
+  const hudLast = useRef(0);
+  const shipRef = useRef<ShipState | null>(null);
+  const starsRef = useRef<StarField | null>(null);
 
-  // overlay refs (throttled)
-  const overlay = useRef({ civ: [] as [number, number][], lastUpdate: 0, cam: { x: 0, y: 0, z: 0, yaw: 0, pitch: 0, dist: 20 } });
-
-  // analog sticks
-  const stickL = useRef({ x: 0, y: 0 });
-  const stickR = useRef({ x: 0, y: 0 });
-
-  // focus bookkeeping
-  const focusedIdx = useRef<number | null>(null);
-  const focusPulse = useRef(0);
-
-  // tap gesture for picking
-  const tapGesture = Gesture.Tap().numberOfTaps(1).maxDeltaX(16).maxDeltaY(16).runOnJS(true)
-    .onEnd((e, ok) => {
-      if (!ok) return;
-      const { camera, civPoints, raycaster, civIndexMap } = threeRefs.current;
-      if (!camera || !civPoints || !raycaster || !civIndexMap) return;
-      const { w, h } = viewSize.current;
-      const ndc = new THREE.Vector2((e.x / w) * 2 - 1, -(e.y / h) * 2 + 1);
-      raycaster.setFromCamera(ndc, camera);
-      (raycaster.params as any).Points = { threshold: 0.14 * PixelRatio.get() };
-      const hits = raycaster.intersectObject(civPoints, false);
-      if (!hits.length) return;
-      const idx = (hits[0] as any).index ?? -1;
-      if (idx < 0) return;
-      const engineIdx = civIndexMap[idx];
-      if (engineIdx >= 0) focusCiv(engineIdx);
-    });
-
-  // focus helpers
-  function startFocusTo(target: THREE.Vector3, dist: number) {
-    focusTween.current.from.copy(lookAt.current);
-    focusTween.current.to.copy(target);
-    focusTween.current.dist = dist;
-    focusTween.current.t = 0;
-    focusTween.current.active = true;
+  function warpTo(x: number, y: number, z: number) {
+    const ship = shipRef.current;
+    if (!ship) return;
+    ship.position.set(x, y, z);
+    ship.velocity.set(0, 0, 0);
+    const stars = starsRef.current;
+    if (stars) recycleStarsAroundPlayer(stars, ship.position);
   }
   function focusCiv(i: number) {
-    if (i < 0 || i >= E.civCount || !E.isCivAlive(i)) return;
-    const p = E.getCivPos(i);
-    const target = new THREE.Vector3(p[0], p[1], p[2]);
-    const d = Math.max(12, Math.min(200, target.length() * 1.8)); // safe visibility
-    startFocusTo(target, d);
-    focusedIdx.current = i;
-    focusPulse.current = 0;
+    const ship = shipRef.current;
+    if (!ship || !engine) return;
+    if (i < 0 || i >= engine.civCount) return;
+    if (engine.civAlive && !engine.civAlive[i]) return;
+    const p = engine.civPos;
+    warpTo(p[i * 3], p[i * 3 + 1], p[i * 3 + 2]);
   }
-  function home() {
-    const r = (engine as any).radius ?? 50;
-    cam.current.yaw = Math.PI * 0.15;
-    cam.current.pitch = Math.PI * 0.12;
-    startFocusTo(new THREE.Vector3(0, 0, 0), Math.max(20, r * 2.2));
-    focusedIdx.current = null;
+  function focusRandom() {
+    if (!engine) return;
+    let tries = 200;
+    while (tries--) {
+      const r = Math.floor(Math.random() * engine.civCount);
+      if (!engine.civAlive || engine.civAlive[r]) { focusCiv(r); return; }
+    }
   }
+  function home() { warpTo(0, 0, 0); }
   function focusStrongest() { const i = pickStrongest(engine); if (i >= 0) focusCiv(i); }
-  function focusFrontier()  { const i = pickFrontier(engine);  if (i >= 0) focusCiv(i); }
-  function focusDensest()   { const i = pickDensest(engine);   if (i >= 0) focusCiv(i); }
+  function focusFrontier() { const i = pickFrontier(engine); if (i >= 0) focusCiv(i); }
+  function focusDensest() { const i = pickDensest(engine); if (i >= 0) focusCiv(i); }
   function focusNearest() {
-    const { x, y, z } = threeRefs.current.camera?.position ?? { x: 0, y: 0, z: 0 };
-    const i = pickNearest(engine, { x, y, z }); if (i >= 0) focusCiv(i);
+    const ship = shipRef.current;
+    if (!ship) return;
+    const i = pickNearest(engine, ship.position);
+    if (i >= 0) focusCiv(i);
   }
-  function jumpToWorldXY(x: number, z: number) {
-    const target = new THREE.Vector3(x, 0, z);
-    const d = Math.max(12, Math.min(200, target.length() * 1.8));
-    startFocusTo(target, d);
-    focusedIdx.current = null;
-  }
+  function jumpToWorldXY(x: number, z: number) { warpTo(x, 0, z); }
 
   useImperativeHandle(ref, () => ({
-    focusCiv, focusRandom: () => { let t=200; while (t--) { const r = (Math.random()*E.civCount)|0; if (E.isCivAlive(r)) { focusCiv(r); return; } } },
-    home, focusStrongest, focusFrontier, focusDensest, focusNearest, jumpToWorldXY,
+    focusCiv,
+    focusRandom,
+    home,
+    focusStrongest,
+    focusFrontier,
+    focusDensest,
+    focusNearest,
+    jumpToWorldXY,
   }), [engine]);
 
   useEffect(() => {
-    cam.current = { yaw: Math.PI * 0.15, pitch: Math.PI * 0.12, dist: 20, fov: (60 * Math.PI) / 180 };
-    lookAt.current.set(0, 0, 0);
-  }, [engine]);
+    return () => {
+      rendererOnLayout.current?.renderer.dispose();
+    };
+  }, []);
 
   return (
-    <GestureDetector gesture={tapGesture}>
-      <View style={{ flex: 1, position: 'relative' }} onLayout={onLayout}>
-        <GLView
-          style={{ flex: 1 }}
-          onContextCreate={(gl) => {
-            const canvas: any = {
-              width: gl.drawingBufferWidth, height: gl.drawingBufferHeight, style: {},
-              clientWidth: gl.drawingBufferWidth, clientHeight: gl.drawingBufferHeight,
-              addEventListener: () => {}, removeEventListener: () => {},
-              getContext: (type: string) => (type.includes("webgl") ? gl : null),
-            };
-            (gl as any).canvas = canvas;
-            if (!(gl as any).getContextAttributes) {
-              (gl as any).getContextAttributes = () => ({
-                alpha: true, depth: true, stencil: false, antialias: false,
-                premultipliedAlpha: false, preserveDrawingBuffer: false,
-                powerPreference: "high-performance", failIfMajorPerformanceCaveat: false, xrCompatible: false,
+    <View style={{ flex: 1 }} onLayout={onLayout}>
+      <GLView
+        style={{ flex: 1 }}
+        onContextCreate={(gl) => {
+          const canvas: any = {
+            width: gl.drawingBufferWidth,
+            height: gl.drawingBufferHeight,
+            style: {},
+            clientWidth: gl.drawingBufferWidth,
+            clientHeight: gl.drawingBufferHeight,
+            addEventListener: () => {},
+            removeEventListener: () => {},
+            getContext: (type: string) =>
+              type.includes('webgl') ? gl : null,
+          };
+          (gl as any).canvas = canvas;
+          if (!(gl as any).getContextAttributes) {
+            (gl as any).getContextAttributes = () => ({
+              alpha: true,
+              depth: true,
+              stencil: false,
+              antialias: false,
+              premultipliedAlpha: false,
+              preserveDrawingBuffer: false,
+              powerPreference: 'high-performance',
+              failIfMajorPerformanceCaveat: false,
+              xrCompatible: false,
+            });
+          }
+
+          const renderer = new THREE.WebGLRenderer({
+            context: gl as any,
+            canvas,
+            alpha: true,
+            antialias: false,
+            premultipliedAlpha: false,
+            preserveDrawingBuffer: false,
+            powerPreference: 'high-performance',
+            // @ts-expect-error runtime read
+            contextAttributes: (gl as any).getContextAttributes(),
+          });
+          const pr = PixelRatio.get();
+          renderer.setSize(gl.drawingBufferWidth, gl.drawingBufferHeight, false);
+          renderer.setPixelRatio(pr);
+          rendererOnLayout.current = { renderer, pr };
+
+          const scene = new THREE.Scene();
+          scene.background = new THREE.Color('#02050c');
+
+          const camera = new THREE.PerspectiveCamera(
+            60,
+            gl.drawingBufferWidth / gl.drawingBufferHeight,
+            0.05,
+            5000,
+          );
+
+          const ship = createShip();
+          const stars = createStarField(scene, ship.position);
+          const shipMesh = makeShipMesh();
+          scene.add(shipMesh);
+          shipRef.current = ship;
+          starsRef.current = stars;
+
+          const fwd = new THREE.Vector3();
+          const right = new THREE.Vector3();
+          const ls = { x: 0, y: 0 };
+          const rs = { x: 0, y: 0 };
+
+          let last = Date.now();
+          let ema = 60;
+
+          function loop() {
+            const now = Date.now();
+            const dt = Math.min(0.05, (now - last) / 1000);
+            last = now;
+
+            ls.x = applyDeadzone(leftStick.current.x);
+            ls.y = applyDeadzone(leftStick.current.y);
+            rs.x = applyDeadzone(rightStick.current.x);
+            rs.y = applyDeadzone(rightStick.current.y);
+
+            updateShip(ship, ls, rs, dt, fwd, right);
+            shipMesh.position.copy(ship.position);
+            shipMesh.rotation.set(ship.pitch, ship.yaw, ship.roll);
+
+            updateCamera(camera, ship, fwd, cameraMode);
+            recycleStarsAroundPlayer(stars, ship.position);
+
+            const speed = ship.velocity.length();
+            if (now - hudLast.current > 100) {
+              hudLast.current = now;
+              setHud({
+                x: ship.position.x,
+                y: ship.position.y,
+                z: ship.position.z,
+                yaw: ship.yaw,
+                pitch: ship.pitch,
+                speed,
               });
             }
 
-            const renderer = new THREE.WebGLRenderer({
-              context: gl as any, canvas, alpha: true, antialias: false,
-              premultipliedAlpha: false, preserveDrawingBuffer: false, powerPreference: "high-performance",
-              // @ts-expect-error runtime read
-              contextAttributes: (gl as any).getContextAttributes(),
-            });
-            const pr = PixelRatio.get();
-            renderer.setSize(gl.drawingBufferWidth, gl.drawingBufferHeight, false);
-            renderer.setPixelRatio(pr);
-            rendererOnLayout.current = { renderer, pr };
+            renderer.render(scene, camera);
+            gl.endFrameEXP();
 
-            const scene = new THREE.Scene();
-            scene.background = new THREE.Color("#02050c");
+            const fps = 1000 / Math.max(16, now - last);
+            ema = ema * 0.9 + fps * 0.1;
+            onFps?.(Math.round(ema));
 
-            const camera = new THREE.PerspectiveCamera(
-              60, gl.drawingBufferWidth / gl.drawingBufferHeight, 0.05, CAMERA_FAR
-            );
-            threeRefs.current.camera = camera;
-            threeRefs.current.raycaster = new THREE.Raycaster();
+            requestAnimationFrame(loop);
+          }
 
-            // background
-            const R = ((engine as any).radius ?? 50) * 30;
-            const bgStars = makeOuterStars(3000, R);
-            scene.add(bgStars);
-            const nebA = makeNebulaSprite(256, "#6cc3ff", 1);
-            const nebB = makeNebulaSprite(256, "#f48fb1", 2);
-            const nebC = makeNebulaSprite(256, "#88f7c5", 3);
-            nebA.position.set(-R * 0.4,  R * 0.15, -R * 0.6);
-            nebB.position.set( R * 0.6, -R * 0.25,  R * 0.2);
-            nebC.position.set(-R * 0.2, -R * 0.3,   R * 0.7);
-            scene.add(nebA, nebB, nebC);
-            threeRefs.current.bgStars = bgStars;
-            threeRefs.current.nebulas = [nebA, nebB, nebC];
+          requestAnimationFrame(loop);
+        }}
+      />
 
-            // grid/axes for orientation
-            const grid = new THREE.GridHelper(((engine as any).radius ?? 50) * 2, 20, 0x254066, 0x15223a);
-            const axes = new THREE.AxesHelper(((engine as any).radius ?? 50) * 0.35);
-            const setOpacity = (obj: THREE.Object3D, opacity: number) => {
-              const mats: any[] = [];
-              obj.traverse((o: any) => { if (o.material) mats.push(o.material); });
-              mats.flat().forEach((m: any) => { m.transparent = true; m.opacity = opacity; });
-            };
-            setOpacity(grid, 0.25); setOpacity(axes, 0.55);
-            scene.add(grid, axes);
-            threeRefs.current.grid = grid; threeRefs.current.axes = axes;
-
-            // uniforms
-            const uniforms = { uPR: { value: pr }, uScale: { value: STAR_U_SCALE }, uMaxSize: { value: STAR_U_MAX * pr } };
-            const civUniforms = { uPR: { value: pr }, uScale: { value: STAR_U_SCALE }, uMaxSize: { value: CIV_U_MAX * pr } };
-
-            // Stars
-            const starGeom = new THREE.BufferGeometry();
-            const starPos = new Float32Array(maxStars * 3);
-            const starCol = new Float32Array(maxStars * 3);
-            const starSize = new Float32Array(maxStars);
-            for (let i = 0; i < maxStars; i++) { starCol[i*3+0]=0.82; starCol[i*3+1]=0.9; starCol[i*3+2]=1.0; starSize[i]=1.6; }
-            starGeom.setAttribute("position", new THREE.BufferAttribute(starPos, 3));
-            starGeom.setAttribute("aColor",   new THREE.BufferAttribute(starCol, 3));
-            starGeom.setAttribute("aSize",    new THREE.BufferAttribute(starSize, 1));
-            starGeom.setDrawRange(0, 0);
-            const starMat = new THREE.ShaderMaterial({ uniforms, vertexShader: VERT, fragmentShader: FRAG, transparent: true, depthWrite: false });
-            const starPoints = new THREE.Points(starGeom, starMat);
-            starPoints.frustumCulled = false;
-            scene.add(starPoints);
-
-            // Civs
-            const civGeom = new THREE.BufferGeometry();
-            const civPos = new Float32Array(maxCivs * 3);
-            const civCol = new Float32Array(maxCivs * 3);
-            const civSize = new Float32Array(maxCivs);
-            civGeom.setAttribute("position", new THREE.BufferAttribute(civPos, 3));
-            civGeom.setAttribute("aColor",   new THREE.BufferAttribute(civCol, 3));
-            civGeom.setAttribute("aSize",    new THREE.BufferAttribute(civSize, 1));
-            civGeom.setDrawRange(0, 0);
-            const civMat = new THREE.ShaderMaterial({ uniforms: civUniforms, vertexShader: VERT, fragmentShader: FRAG, transparent: true, depthWrite: false });
-            const civPoints = new THREE.Points(civGeom, civMat);
-            civPoints.frustumCulled = false;
-            scene.add(civPoints);
-            threeRefs.current.civPoints = civPoints;
-
-            // Halos
-            const haloGeom = new THREE.BufferGeometry();
-            const haloPos = new Float32Array(maxCivs * 3);
-            const haloCol = new Float32Array(maxCivs * 3);
-            const haloSize = new Float32Array(maxCivs);
-            for (let i = 0; i < maxCivs; i++) { haloCol[i*3+0]=0.44; haloCol[i*3+1]=0.89; haloCol[i*3+2]=1.0; }
-            haloGeom.setAttribute("position", new THREE.BufferAttribute(haloPos, 3));
-            haloGeom.setAttribute("aColor",   new THREE.BufferAttribute(haloCol, 3));
-            haloGeom.setAttribute("aSize",    new THREE.BufferAttribute(haloSize, 1));
-            haloGeom.setDrawRange(0, 0);
-            const haloMat = new THREE.ShaderMaterial({ uniforms: civUniforms, vertexShader: VERT, fragmentShader: FRAG, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
-            const haloPoints = new THREE.Points(haloGeom, haloMat);
-            haloPoints.frustumCulled = false;
-            scene.add(haloPoints);
-
-            // Guide beacons (visible when < 3 civs alive)
-            const beaconGeom = new THREE.BufferGeometry();
-            const beaconPos = new Float32Array(GUIDE_BEACONS * 3);
-            const beaconCol = new Float32Array(GUIDE_BEACONS * 3);
-            const beaconSize = new Float32Array(GUIDE_BEACONS);
-            for (let i=0;i<GUIDE_BEACONS;i++){ beaconCol[i*3+0]=1.0; beaconCol[i*3+1]=0.84; beaconCol[i*3+2]=0.25; beaconSize[i]=8.0; }
-            beaconGeom.setAttribute("position", new THREE.BufferAttribute(beaconPos, 3));
-            beaconGeom.setAttribute("aColor",   new THREE.BufferAttribute(beaconCol, 3));
-            beaconGeom.setAttribute("aSize",    new THREE.BufferAttribute(beaconSize, 1));
-            beaconGeom.setDrawRange(0, 0);
-            const beaconMat = new THREE.ShaderMaterial({ uniforms: civUniforms, vertexShader: VERT, fragmentShader: FRAG, transparent: true, depthWrite: false });
-            const beacons = new THREE.Points(beaconGeom, beaconMat);
-            beacons.frustumCulled = false;
-            scene.add(beacons);
-            threeRefs.current.beacons = beacons;
-
-            // palette
-            const colSilent = [0.60, 0.65, 1.00];
-            const colBroad  = [1.00, 0.82, 0.40];
-            const colCaut   = [0.32, 1.00, 0.66];
-            const colPree   = [1.00, 0.42, 0.42];
-
-            // warm-up + initial stars
-            if (typeof (engine as any).stepN === "function") (engine as any).stepN(90);
-            for (let i = 0; i < E.starCount; i++) {
-              const s = E.getStar(i);
-              starPos[i*3+0]=s[0]; starPos[i*3+1]=s[1]; starPos[i*3+2]=s[2];
-            }
-            markNeedsUpdate(starGeom, "position");
-            starGeom.setDrawRange(0, E.starCount);
-            starGeom.computeBoundingSphere();
-            let lastStarCount = E.starCount;
-
-            // pick indices map
-            const civIndexMap = new Int32Array(maxCivs);
-            civIndexMap.fill(-1);
-            threeRefs.current.civIndexMap = civIndexMap;
-
-            // auto-frame on first content
-            const rs = (engine as any).radius ?? 0;
-            if ((rs <= 0) && starGeom.boundingSphere) {
-              const bs = starGeom.boundingSphere;
-              lookAt.current.copy(bs.center); cam.current.dist = Math.max(20, Math.min(300, bs.radius * 1.8));
-            } else if (rs > 0) {
-              cam.current.dist = Math.max(20, rs * 2.0);
-            }
-
-            // loop
-            let last = Date.now(), ema = 60;
-            const loop = () => {
-              const now = Date.now();
-              const dt = Math.min(0.05, (now - last) / 1000);
-              last = now;
-
-              E.step(dt);
-
-              // pulse
-              if (focusedIdx.current != null) {
-                focusPulse.current += dt * 2.0;
-                if (focusPulse.current > Math.PI * 2) focusPulse.current -= Math.PI * 2;
-              }
-
-              // focus tween
-              if (focusTween.current.active) {
-                focusTween.current.t = Math.min(1, focusTween.current.t + dt * 2.5);
-                const t = focusTween.current.t;
-                lookAt.current.lerpVectors(focusTween.current.from, focusTween.current.to, t);
-                cam.current.dist += (focusTween.current.dist - cam.current.dist) * 0.25;
-                if (t >= 1 - 1e-3) focusTween.current.active = false;
-              }
-
-              // analog sticks
-              cam.current.yaw += stickL.current.x * dt * 1.5;
-              cam.current.pitch = Math.max(
-                -Math.PI / 2 + 0.02,
-                Math.min(Math.PI / 2 - 0.02, cam.current.pitch + stickL.current.y * dt * 1.5)
-              );
-              cam.current.dist = Math.max(
-                5,
-                Math.min(CAMERA_FAR, cam.current.dist - stickR.current.y * dt * 40)
-              );
-
-              // camera from spherical
-              const { yaw, pitch, dist } = cam.current;
-              const cx = lookAt.current.x + dist * Math.cos(pitch) * Math.cos(yaw);
-              const cy = lookAt.current.y + dist * Math.sin(pitch);
-              const cz = lookAt.current.z + dist * Math.cos(pitch) * Math.sin(yaw);
-              camera.fov = (cam.current.fov * 180) / Math.PI;
-              camera.updateProjectionMatrix();
-              camera.position.set(cx, cy, cz);
-              camera.lookAt(lookAt.current);
-
-              // stars expanding
-              if (E.starCount > lastStarCount) {
-                for (let i = lastStarCount; i < E.starCount; i++) {
-                  const s = E.getStar(i);
-                  starPos[i*3+0]=s[0]; starPos[i*3+1]=s[1]; starPos[i*3+2]=s[2];
-                }
-                markNeedsUpdate(starGeom, "position");
-                starGeom.setDrawRange(0, E.starCount);
-                starGeom.computeBoundingSphere();
-                lastStarCount = E.starCount;
-              }
-
-              // civs + halos
-              let ci = 0, hi = 0, aliveCnt = 0;
-              for (let i = 0; i < E.civCount; i++) {
-                if (!E.isCivAlive(i)) continue;
-                aliveCnt++;
-                const p = E.getCivPos(i);
-                civPos[ci*3+0]=p[0]; civPos[ci*3+1]=p[1]; civPos[ci*3+2]=p[2];
-
-                const strat = E.getCivStrat(i);
-                const c =
-                  strat === 0 ? colSilent :
-                  strat === 1 ? colBroad  :
-                  strat === 2 ? colCaut   : colPree;
-                civCol[ci*3+0]=c[0]; civCol[ci*3+1]=c[1]; civCol[ci*3+2]=c[2];
-
-                let sz = 2.0 + Math.min(4.0, E.getCivTech(i) * 1.2);
-                if (focusedIdx.current === i) {
-                  const pulse = 0.5 + 0.5 * Math.sin(focusPulse.current);
-                  sz += 4.0 * pulse;
-                  civCol[ci*3+0] = 1.0; civCol[ci*3+1] = 0.9; civCol[ci*3+2] = 0.6; // gold tint
-                }
-                civSize[ci] = sz;
-
-                civIndexMap[ci] = i; ci++;
-
-                if (E.isCivRevealed(i)) {
-                  haloPos[hi*3+0]=p[0]; haloPos[hi*3+1]=p[1]; haloPos[hi*3+2]=p[2];
-                  haloSize[hi] = (2.0 + Math.min(4.0, E.getCivTech(i) * 1.2)) + 4.0;
-                  hi++;
-                }
-              }
-              markNeedsUpdate(civGeom, "position");
-              markNeedsUpdate(civGeom, "aColor");
-              markNeedsUpdate(civGeom, "aSize");
-              civGeom.setDrawRange(0, ci);
-              civGeom.computeBoundingSphere();
-
-              markNeedsUpdate(haloGeom, "position");
-              markNeedsUpdate(haloGeom, "aSize");
-              haloGeom.setDrawRange(0, hi);
-              haloGeom.computeBoundingSphere();
-
-              // guide beacons if scene is too empty
-              const bGeom = threeRefs.current.beacons!.geometry as THREE.BufferGeometry;
-              const bPos = (bGeom.getAttribute("position") as THREE.BufferAttribute).array as Float32Array;
-              let bCount = 0;
-              if (aliveCnt < 3) {
-                const baseR = Math.max(8, ((engine as any).radius ?? 20) * 0.6);
-                for (let i=0; i<GUIDE_BEACONS; i++) {
-                  const a = (i / GUIDE_BEACONS) * Math.PI * 2;
-                  const r = baseR * (0.8 + 0.3 * Math.sin(i*2.1));
-                  const x = r * Math.cos(a), z = r * Math.sin(a);
-                  bPos[i*3+0] = x; bPos[i*3+1] = 0; bPos[i*3+2] = z;
-                  bCount++;
-                }
-              }
-              if (bCount>0) { markNeedsUpdate(bGeom, "position"); bGeom.setDrawRange(0, bCount); }
-              else { bGeom.setDrawRange(0, 0); }
-
-              // overlays (throttle)
-              overlay.current.cam = { x: camera.position.x, y: camera.position.y, z: camera.position.z, yaw: cam.current.yaw, pitch: cam.current.pitch, dist };
-              const tNow = Date.now();
-              if (tNow - overlay.current.lastUpdate > 100) {
-                overlay.current.civ = sampleCivs(engine, 800);
-                overlay.current.lastUpdate = tNow;
-              }
-
-              renderer.render(scene, camera);
-              gl.endFrameEXP();
-
-              const fps = 1000 / Math.max(16, Date.now() - now);
-              ema = ema * 0.9 + fps * 0.1; onFps?.(Math.round(ema));
-              requestAnimationFrame(loop);
-            };
-            loop();
+      <Vignette opacity={0.5} />
+      <View
+        pointerEvents="box-none"
+        style={{ position: 'absolute', top: 8, right: 8 }}
+      >
+        <Compass yaw={hud.yaw} pitch={hud.pitch} />
+      </View>
+      <CoordsHUD
+        cam={{
+          x: hud.x,
+          y: hud.y,
+          z: hud.z,
+          yaw: hud.yaw,
+          pitch: hud.pitch,
+          dist: hud.speed,
+        }}
+      />
+      <View
+        pointerEvents="none"
+        style={{
+          position: 'absolute',
+          left: '50%',
+          top: '50%',
+          width: 20,
+          height: 20,
+          marginLeft: -10,
+          marginTop: -10,
+        }}
+      >
+        <View
+          style={{
+            position: 'absolute',
+            left: 9,
+            top: 0,
+            bottom: 0,
+            width: 2,
+            backgroundColor: 'rgba(200,220,255,0.3)',
           }}
         />
-
-        {/* Overlays */}
-        <Vignette opacity={0.5} />
-        <View style={{ position: 'absolute', top: 8, right: 8, flexDirection: 'row', gap: 8 }} pointerEvents="box-none">
-          <Compass yaw={overlay.current.cam.yaw} pitch={overlay.current.cam.pitch} />
-          <MiniMap
-            radius={(engine as any).radius ?? 100}
-            cameraPos={{ x: overlay.current.cam.x, z: overlay.current.cam.z, yaw: overlay.current.cam.yaw }}
-            civXY={overlay.current.civ}
-            onSelect={(x, z) => jumpToWorldXY(x, z)}
-          />
-        </View>
-        <CoordsHUD cam={overlay.current.cam} radius={(engine as any).radius} />
-        <AnalogStick
-          onChange={(x, y) => {
-            stickL.current = { x, y };
+        <View
+          style={{
+            position: 'absolute',
+            top: 9,
+            left: 0,
+            right: 0,
+            height: 2,
+            backgroundColor: 'rgba(200,220,255,0.3)',
           }}
-          style={{ position: 'absolute', left: 12, bottom: 80 }}
-        />
-        <AnalogStick
-          onChange={(x, y) => {
-            stickR.current = { x, y };
-          }}
-          style={{ position: 'absolute', right: 12, bottom: 80 }}
         />
       </View>
-    </GestureDetector>
+      <AnalogStick
+        onChange={(x, y) => {
+          leftStick.current = { x, y };
+        }}
+        style={{ position: 'absolute', left: 12, bottom: 80 }}
+      />
+      <AnalogStick
+        onChange={(x, y) => {
+          rightStick.current = { x, y };
+        }}
+        style={{ position: 'absolute', right: 12, bottom: 80 }}
+      />
+    </View>
   );
 });
 
