@@ -22,6 +22,7 @@ import type { CameraState, RaycastRefs } from "./types";
 import { createStarsMesh } from "./StarsMesh";
 import { getWorld } from "../sim/world";
 
+const DEBUG_FORCE_VISIBLE = true;
 // Public API for parent components
 export type GLSceneHandle = {
   focusCiv(i: number): void;
@@ -226,6 +227,123 @@ export const GLScene = React.forwardRef<GLSceneHandle, Props>(function GLScene(
         <GLView
           style={{ flex: 1 }}
           onContextCreate={(gl) => {
+            if (DEBUG_FORCE_VISIBLE) {
+              const canvas: any = {
+                width: gl.drawingBufferWidth,
+                height: gl.drawingBufferHeight,
+                style: {},
+                clientWidth: gl.drawingBufferWidth,
+                clientHeight: gl.drawingBufferHeight,
+                addEventListener: () => {},
+                removeEventListener: () => {},
+                getContext: () => gl,
+              };
+              const renderer = new THREE.WebGLRenderer({
+                context: gl as any,
+                canvas,
+                alpha: true,
+                antialias: false,
+                premultipliedAlpha: false,
+                preserveDrawingBuffer: false,
+                powerPreference: "high-performance",
+                // @ts-expect-error runtime
+                contextAttributes: (gl as any).getContextAttributes(),
+              });
+              const pr = PixelRatio.get();
+              renderer.setSize(gl.drawingBufferWidth, gl.drawingBufferHeight, false);
+              renderer.setPixelRatio(pr);
+              rendererRef.current = { renderer, pr };
+
+              const scene = new THREE.Scene();
+              const camera = new THREE.PerspectiveCamera(
+                60,
+                gl.drawingBufferWidth / gl.drawingBufferHeight,
+                0.1,
+                100000
+              );
+              threeRefs.current.scene = scene;
+              threeRefs.current.camera = camera;
+
+              // 1) Lock camera + frustum
+              camera.near = 0.1;
+              camera.far = 100000;
+              camera.updateProjectionMatrix();
+              camera.position.set(0, 0, 200);
+              camera.lookAt(0, 0, 0);
+
+              // 2) Opaque, non-black background
+              renderer.setClearColor(0x1e2230, 1);
+              renderer.autoClear = true;
+
+              // 3) Big cube at origin
+              const cube = new THREE.Mesh(
+                new THREE.BoxGeometry(50, 50, 50),
+                new THREE.MeshBasicMaterial({ color: 0xff3366 })
+              );
+              scene.add(cube);
+
+              // Axes helper
+              scene.add(new THREE.AxesHelper(100));
+
+              // 4) Visible star field (PointsMaterial, not shader)
+              const N = 2000;
+              const pos = new Float32Array(N * 3);
+              for (let i = 0; i < N; i++) {
+                const rSphere = 500 * Math.cbrt(Math.random());
+                const th = Math.acos(2 * Math.random() - 1);
+                const ph = 2 * Math.PI * Math.random();
+                pos[3 * i + 0] = rSphere * Math.sin(th) * Math.cos(ph);
+                pos[3 * i + 1] = rSphere * Math.sin(th) * Math.sin(ph);
+                pos[3 * i + 2] = rSphere * Math.cos(th);
+              }
+              const geo = new THREE.BufferGeometry();
+              geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+              const pts = new THREE.Points(
+                geo,
+                new THREE.PointsMaterial({
+                  size: 8,
+                  sizeAttenuation: false,
+                  color: 0xffffff,
+                  depthTest: true,
+                })
+              );
+              pts.frustumCulled = false;
+              scene.add(pts);
+
+              // 5) Billboard sprite directly in front of camera
+              const spriteMat = new THREE.SpriteMaterial({ color: 0x00ff88 });
+              const sprite = new THREE.Sprite(spriteMat);
+              sprite.renderOrder = 999;
+              sprite.material.depthTest = false;
+              const placeSpriteInFront = () => {
+                const dir = new THREE.Vector3();
+                camera.getWorldDirection(dir);
+                sprite.position.copy(camera.position).add(dir.multiplyScalar(20));
+              };
+              placeSpriteInFront();
+              scene.add(sprite);
+
+              // 6) Override render loop: render once per frame and log draw calls
+              let tick = 0;
+              renderer.setAnimationLoop(() => {
+                placeSpriteInFront();
+                if (tick++ % 30 === 0) {
+                  const info = renderer.info;
+                  console.log(
+                    "drawcalls",
+                    info.render.calls,
+                    "tris",
+                    info.render.triangles,
+                    "pts",
+                    info.render.points
+                  );
+                }
+                renderer.render(scene, camera);
+                gl.endFrameEXP();
+              });
+              return;
+            }
+
             rendererHandle.current = initRenderer(gl, {
               engine,
               maxStars,
