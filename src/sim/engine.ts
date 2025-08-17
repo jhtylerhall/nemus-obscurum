@@ -127,4 +127,56 @@ export class Engine {
       totalKills:this.totalKills,
     };
   }
+
+  /**
+   * Spawn up to `n` new stars (inside current radius) without reallocating buffers.
+   * Returns how many were actually spawned.
+   */
+  spawnRandomStars(n: number): number {
+    const max = this.params.maxStars;
+    let add = Math.max(0, Math.min(n | 0, max - this.starCount));
+    if (!add) return 0;
+    const R = this.radius || 50;
+    for (let k = 0; k < add; k++) {
+      const i = this.starCount++;
+      // random point in sphere (slightly biased toward shell)
+      const u = this.rng(); const v = this.rng();
+      const theta = 2 * Math.PI * u;
+      const cosPhi = 2 * v - 1;
+      const sinPhi = Math.sqrt(Math.max(0, 1 - cosPhi * cosPhi));
+      const r = R * Math.cbrt(this.rng()); // ~uniform
+      this.starPos[i * 3 + 0] = r * sinPhi * Math.cos(theta);
+      this.starPos[i * 3 + 1] = r * cosPhi;
+      this.starPos[i * 3 + 2] = r * sinPhi * Math.sin(theta);
+    }
+    return add;
+  }
+
+  /**
+   * Spawn a single civilization at a random position. Returns its index, or -1 if none available.
+   */
+  spawnRandomCiv(): number {
+    const max = this.params.maxCivs;
+    let slot = -1;
+    for (let i = 0; i < max; i++) {
+      if (!this.civAlive[i]) { slot = i; break; }
+    }
+    if (slot < 0) return -1;
+    const R = this.radius || 50;
+    const u = this.rng(); const v = this.rng();
+    const theta = 2 * Math.PI * u;
+    const cosPhi = 2 * v - 1;
+    const sinPhi = Math.sqrt(Math.max(0, 1 - cosPhi * cosPhi));
+    const r = R * (0.2 + 0.8 * Math.cbrt(this.rng()));
+    const x = r * sinPhi * Math.cos(theta);
+    const y = r * cosPhi;
+    const z = r * sinPhi * Math.sin(theta);
+    this.civPos[slot * 3 + 0] = x;
+    this.civPos[slot * 3 + 1] = y;
+    this.civPos[slot * 3 + 2] = z;
+    this.civAlive[slot] = 1;
+    if (this.civStrat) this.civStrat[slot] = this.civStrat[slot] ?? 0;
+    this.civCount = Math.max(this.civCount, slot + 1);
+    return slot;
+  }
 }

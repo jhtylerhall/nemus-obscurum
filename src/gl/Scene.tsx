@@ -6,6 +6,7 @@ import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { MiniMap } from "../ui/MiniMap";
 import { Compass } from "../ui/Compass";
 import { Vignette } from "../ui/Vignette";
+import { ShipIndicator } from "../ui/ShipIndicator";
 import { CoordsHUD } from "../ui/CoordsHUD";
 import { AnalogStick } from "../ui/AnalogStick";
 import { adaptEngine, sampleCivs } from "./engineAdapter";
@@ -505,6 +506,8 @@ export const GLScene = React.forwardRef<GLSceneHandle, Props>(function GLScene(
 
         {/* Overlays */}
         <Vignette opacity={0.5} />
+        {/* Always-visible ship reticle (center of the screen) */}
+        <ShipIndicator yaw={overlay.current.cam.yaw} pitch={overlay.current.cam.pitch} />
         <View style={{ position: 'absolute', top: 8, right: 8, flexDirection: 'row', gap: 8 }} pointerEvents="box-none">
           <Compass yaw={overlay.current.cam.yaw} pitch={overlay.current.cam.pitch} />
           <MiniMap
