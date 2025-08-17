@@ -1,9 +1,9 @@
-import type React from 'react';
-import { PixelRatio } from 'react-native';
-import * as THREE from 'three';
+import type React from "react";
+import { PixelRatio } from "react-native";
+import * as THREE from "three";
 
-import { adaptEngine, sampleCivs } from './engineAdapter';
-import type { CameraState, RaycastRefs } from './types';
+import { adaptEngine, sampleCivs } from "./engineAdapter";
+import type { CameraState, RaycastRefs } from "./types";
 
 // ---------- Tunables ----------
 const CAMERA_FAR = 5000;
@@ -18,7 +18,7 @@ function markNeedsUpdate(geom: THREE.BufferGeometry, key: string) {
     | THREE.BufferAttribute
     | THREE.InterleavedBufferAttribute
     | undefined;
-  if (attr && 'needsUpdate' in attr) {
+  if (attr && "needsUpdate" in attr) {
     // @ts-ignore
     attr.needsUpdate = true;
   }
@@ -55,7 +55,8 @@ function makeOuterStars(n: number, R: number) {
   const p = new Float32Array(n * 3);
   const c = new Float32Array(n * 3);
   for (let i = 0; i < n; i++) {
-    const u = Math.random(), v = Math.random();
+    const u = Math.random(),
+      v = Math.random();
     const theta = 2 * Math.PI * u;
     const cosPhi = 2 * v - 1;
     const sinPhi = Math.sqrt(Math.max(0, 1 - cosPhi * cosPhi));
@@ -68,34 +69,65 @@ function makeOuterStars(n: number, R: number) {
     c[i * 3 + 1] = 0.82 + 0.18 * t;
     c[i * 3 + 2] = 0.95 + 0.05 * Math.random();
   }
-  g.setAttribute('position', new THREE.BufferAttribute(p, 3));
-  g.setAttribute('color', new THREE.BufferAttribute(c, 3));
-  const m = new THREE.PointsMaterial({ size: 2, sizeAttenuation: true, vertexColors: true, transparent: true });
+  g.setAttribute("position", new THREE.BufferAttribute(p, 3));
+  g.setAttribute("color", new THREE.BufferAttribute(c, 3));
+  const m = new THREE.PointsMaterial({
+    size: 2,
+    sizeAttenuation: true,
+    vertexColors: true,
+    transparent: true,
+  });
   const mesh = new THREE.Points(g, m);
   mesh.frustumCulled = false;
   return mesh;
 }
-function makeNebulaSprite(size: number, tint: THREE.ColorRepresentation, seed = 1) {
+function makeNebulaSprite(
+  size: number,
+  tint: THREE.ColorRepresentation,
+  seed = 1
+) {
   const rnd = seeded(seed);
   const data = new Uint8Array(size * size * 4);
-  const cx = size / 2, cy = size / 2, R = size * 0.5;
-  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
-    const dx = (x - cx) / R, dy = (y - cy) / R;
-    const d = Math.sqrt(dx * dx + dy * dy);
-    const fall = Math.max(0, 1 - d);
-    const noise = 0.6 * rnd() + 0.4 * rnd();
-    const a = Math.pow(fall, 1.5) * Math.pow(noise, 1.2);
-    const i = (y * size + x) * 4;
-    data[i+0]=255; data[i+1]=255; data[i+2]=255; data[i+3]=Math.floor(255*a);
-  }
-  const tex = new THREE.DataTexture(data, size, size); tex.needsUpdate = true;
-  const mat = new THREE.SpriteMaterial({ map: tex, color: new THREE.Color(tint), opacity: 0.45, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false });
-  const sprite = new THREE.Sprite(mat); sprite.scale.setScalar(R * 8);
+  const cx = size / 2,
+    cy = size / 2,
+    R = size * 0.5;
+  for (let y = 0; y < size; y++)
+    for (let x = 0; x < size; x++) {
+      const dx = (x - cx) / R,
+        dy = (y - cy) / R;
+      const d = Math.sqrt(dx * dx + dy * dy);
+      const fall = Math.max(0, 1 - d);
+      const noise = 0.6 * rnd() + 0.4 * rnd();
+      const a = Math.pow(fall, 1.5) * Math.pow(noise, 1.2);
+      const i = (y * size + x) * 4;
+      data[i + 0] = 255;
+      data[i + 1] = 255;
+      data[i + 2] = 255;
+      data[i + 3] = Math.floor(255 * a);
+    }
+  const tex = new THREE.DataTexture(data, size, size);
+  tex.needsUpdate = true;
+  const mat = new THREE.SpriteMaterial({
+    map: tex,
+    color: new THREE.Color(tint),
+    opacity: 0.45,
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+  const sprite = new THREE.Sprite(mat);
+  sprite.scale.setScalar(R * 8);
   return sprite;
 }
 
 // ---------- types ----------
-type FocusTween = { active: boolean; t: number; from: THREE.Vector3; to: THREE.Vector3; dist: number };
+type FocusTween = {
+  active: boolean;
+  t: number;
+  from: THREE.Vector3;
+  to: THREE.Vector3;
+  dist: number;
+};
 
 type InitOpts = {
   engine: any;
@@ -106,10 +138,33 @@ type InitOpts = {
   focusTween: React.MutableRefObject<FocusTween>;
   stickL: React.MutableRefObject<{ x: number; y: number }>;
   stickR: React.MutableRefObject<{ x: number; y: number }>;
-  overlay: React.MutableRefObject<{ civ: [number, number][]; lastUpdate: number; cam: { x: number; y: number; z: number; yaw: number; pitch: number; dist: number } }>;
-  threeRefs: React.MutableRefObject<RaycastRefs & { bgStars?: THREE.Points; nebulas?: THREE.Sprite[]; grid?: THREE.GridHelper; axes?: THREE.AxesHelper; beacons?: THREE.Points }>;
+  overlay: React.MutableRefObject<{
+    civ: [number, number][];
+    lastUpdate: number;
+    cam: {
+      x: number;
+      y: number;
+      z: number;
+      yaw: number;
+      pitch: number;
+      dist: number;
+    };
+  }>;
+  threeRefs: React.MutableRefObject<
+    RaycastRefs & {
+      bgStars?: THREE.Points;
+      nebulas?: THREE.Sprite[];
+      grid?: THREE.GridHelper;
+      axes?: THREE.AxesHelper;
+      beacons?: THREE.Points;
+      scene?: THREE.Scene;
+    }
+  >;
   onFps?: (fps: number) => void;
-  rendererRef: React.MutableRefObject<{ renderer: THREE.WebGLRenderer; pr: number } | null>;
+  rendererRef: React.MutableRefObject<{
+    renderer: THREE.WebGLRenderer;
+    pr: number;
+  } | null>;
 };
 
 type RendererHandle = {
@@ -143,7 +198,7 @@ export function initRenderer(gl: any, opts: InitOpts): RendererHandle {
     clientHeight: gl.drawingBufferHeight,
     addEventListener: () => {},
     removeEventListener: () => {},
-    getContext: (type: string) => (type.includes('webgl') ? gl : null),
+    getContext: (type: string) => (type.includes("webgl") ? gl : null),
   };
   (gl as any).canvas = canvas;
   if (!(gl as any).getContextAttributes) {
@@ -154,7 +209,7 @@ export function initRenderer(gl: any, opts: InitOpts): RendererHandle {
       antialias: false,
       premultipliedAlpha: false,
       preserveDrawingBuffer: false,
-      powerPreference: 'high-performance',
+      powerPreference: "high-performance",
       failIfMajorPerformanceCaveat: false,
       xrCompatible: false,
     });
@@ -167,7 +222,7 @@ export function initRenderer(gl: any, opts: InitOpts): RendererHandle {
     antialias: false,
     premultipliedAlpha: false,
     preserveDrawingBuffer: false,
-    powerPreference: 'high-performance',
+    powerPreference: "high-performance",
     // @ts-expect-error runtime
     contextAttributes: (gl as any).getContextAttributes(),
   });
@@ -177,7 +232,7 @@ export function initRenderer(gl: any, opts: InitOpts): RendererHandle {
   rendererRef.current = { renderer, pr };
 
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color('#02050c');
+  scene.background = new THREE.Color("#02050c");
 
   const camera = new THREE.PerspectiveCamera(
     60,
@@ -186,15 +241,16 @@ export function initRenderer(gl: any, opts: InitOpts): RendererHandle {
     CAMERA_FAR
   );
   threeRefs.current.camera = camera;
+  threeRefs.current.scene = scene;
   threeRefs.current.raycaster = new THREE.Raycaster();
 
   // background
   const R = ((engine as any).radius ?? 50) * 30;
   const bgStars = makeOuterStars(3000, R);
   scene.add(bgStars);
-  const nebA = makeNebulaSprite(256, '#6cc3ff', 1);
-  const nebB = makeNebulaSprite(256, '#f48fb1', 2);
-  const nebC = makeNebulaSprite(256, '#88f7c5', 3);
+  const nebA = makeNebulaSprite(256, "#6cc3ff", 1);
+  const nebB = makeNebulaSprite(256, "#f48fb1", 2);
+  const nebC = makeNebulaSprite(256, "#88f7c5", 3);
   nebA.position.set(-R * 0.4, R * 0.15, -R * 0.6);
   nebB.position.set(R * 0.6, -R * 0.25, R * 0.2);
   nebC.position.set(-R * 0.2, -R * 0.3, R * 0.7);
@@ -203,7 +259,12 @@ export function initRenderer(gl: any, opts: InitOpts): RendererHandle {
   threeRefs.current.nebulas = [nebA, nebB, nebC];
 
   // grid/axes for orientation
-  const grid = new THREE.GridHelper(((engine as any).radius ?? 50) * 2, 20, 0x254066, 0x15223a);
+  const grid = new THREE.GridHelper(
+    ((engine as any).radius ?? 50) * 2,
+    20,
+    0x254066,
+    0x15223a
+  );
   const axes = new THREE.AxesHelper(((engine as any).radius ?? 50) * 0.35);
   const setOpacity = (obj: THREE.Object3D, opacity: number) => {
     const mats: any[] = [];
@@ -244,9 +305,9 @@ export function initRenderer(gl: any, opts: InitOpts): RendererHandle {
     starCol[i * 3 + 2] = 1.0;
     starSize[i] = 1.6;
   }
-  starGeom.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
-  starGeom.setAttribute('aColor', new THREE.BufferAttribute(starCol, 3));
-  starGeom.setAttribute('aSize', new THREE.BufferAttribute(starSize, 1));
+  starGeom.setAttribute("position", new THREE.BufferAttribute(starPos, 3));
+  starGeom.setAttribute("aColor", new THREE.BufferAttribute(starCol, 3));
+  starGeom.setAttribute("aSize", new THREE.BufferAttribute(starSize, 1));
   starGeom.setDrawRange(0, 0);
   const starMat = new THREE.ShaderMaterial({
     uniforms,
@@ -264,9 +325,9 @@ export function initRenderer(gl: any, opts: InitOpts): RendererHandle {
   const civPos = new Float32Array(maxCivs * 3);
   const civCol = new Float32Array(maxCivs * 3);
   const civSize = new Float32Array(maxCivs);
-  civGeom.setAttribute('position', new THREE.BufferAttribute(civPos, 3));
-  civGeom.setAttribute('aColor', new THREE.BufferAttribute(civCol, 3));
-  civGeom.setAttribute('aSize', new THREE.BufferAttribute(civSize, 1));
+  civGeom.setAttribute("position", new THREE.BufferAttribute(civPos, 3));
+  civGeom.setAttribute("aColor", new THREE.BufferAttribute(civCol, 3));
+  civGeom.setAttribute("aSize", new THREE.BufferAttribute(civSize, 1));
   civGeom.setDrawRange(0, 0);
   const civMat = new THREE.ShaderMaterial({
     uniforms: civUniforms,
@@ -290,9 +351,9 @@ export function initRenderer(gl: any, opts: InitOpts): RendererHandle {
     haloCol[i * 3 + 1] = 0.89;
     haloCol[i * 3 + 2] = 1.0;
   }
-  haloGeom.setAttribute('position', new THREE.BufferAttribute(haloPos, 3));
-  haloGeom.setAttribute('aColor', new THREE.BufferAttribute(haloCol, 3));
-  haloGeom.setAttribute('aSize', new THREE.BufferAttribute(haloSize, 1));
+  haloGeom.setAttribute("position", new THREE.BufferAttribute(haloPos, 3));
+  haloGeom.setAttribute("aColor", new THREE.BufferAttribute(haloCol, 3));
+  haloGeom.setAttribute("aSize", new THREE.BufferAttribute(haloSize, 1));
   haloGeom.setDrawRange(0, 0);
   const haloMat = new THREE.ShaderMaterial({
     uniforms: civUniforms,
@@ -317,9 +378,9 @@ export function initRenderer(gl: any, opts: InitOpts): RendererHandle {
     beaconCol[i * 3 + 2] = 0.25;
     beaconSize[i] = 8.0;
   }
-  beaconGeom.setAttribute('position', new THREE.BufferAttribute(beaconPos, 3));
-  beaconGeom.setAttribute('aColor', new THREE.BufferAttribute(beaconCol, 3));
-  beaconGeom.setAttribute('aSize', new THREE.BufferAttribute(beaconSize, 1));
+  beaconGeom.setAttribute("position", new THREE.BufferAttribute(beaconPos, 3));
+  beaconGeom.setAttribute("aColor", new THREE.BufferAttribute(beaconCol, 3));
+  beaconGeom.setAttribute("aSize", new THREE.BufferAttribute(beaconSize, 1));
   beaconGeom.setDrawRange(0, 0);
   const beaconMat = new THREE.ShaderMaterial({
     uniforms: civUniforms,
@@ -340,14 +401,14 @@ export function initRenderer(gl: any, opts: InitOpts): RendererHandle {
   const colPree = [1.0, 0.42, 0.42];
 
   // warm-up + initial stars
-  if (typeof (engine as any).stepN === 'function') (engine as any).stepN(90);
+  if (typeof (engine as any).stepN === "function") (engine as any).stepN(90);
   for (let i = 0; i < E.starCount; i++) {
     const s = E.getStar(i);
     starPos[i * 3 + 0] = s[0];
     starPos[i * 3 + 1] = s[1];
     starPos[i * 3 + 2] = s[2];
   }
-  markNeedsUpdate(starGeom, 'position');
+  markNeedsUpdate(starGeom, "position");
   starGeom.setDrawRange(0, E.starCount);
   starGeom.computeBoundingSphere();
   let lastStarCount = E.starCount;
@@ -370,7 +431,8 @@ export function initRenderer(gl: any, opts: InitOpts): RendererHandle {
   // loop
   let focusedIdx: number | null = null;
   let focusPulse = 0;
-  let last = Date.now(), ema = 60;
+  let last = Date.now(),
+    ema = 60;
   const loop = () => {
     const now = Date.now();
     const dt = Math.min(0.05, (now - last) / 1000);
@@ -386,7 +448,11 @@ export function initRenderer(gl: any, opts: InitOpts): RendererHandle {
     if (focusTween.current.active) {
       focusTween.current.t = Math.min(1, focusTween.current.t + dt * 2.5);
       const t = focusTween.current.t;
-      lookAt.current.lerpVectors(focusTween.current.from, focusTween.current.to, t);
+      lookAt.current.lerpVectors(
+        focusTween.current.from,
+        focusTween.current.to,
+        t
+      );
       cam.current.dist += (focusTween.current.dist - cam.current.dist) * 0.25;
       if (t >= 1 - 1e-3) focusTween.current.active = false;
     }
@@ -394,9 +460,15 @@ export function initRenderer(gl: any, opts: InitOpts): RendererHandle {
     cam.current.yaw += stickL.current.x * dt * 1.5;
     cam.current.pitch = Math.max(
       -Math.PI / 2 + 0.02,
-      Math.min(Math.PI / 2 - 0.02, cam.current.pitch + stickL.current.y * dt * 1.5)
+      Math.min(
+        Math.PI / 2 - 0.02,
+        cam.current.pitch + stickL.current.y * dt * 1.5
+      )
     );
-    cam.current.dist = Math.max(5, Math.min(CAMERA_FAR, cam.current.dist - stickR.current.y * dt * 40));
+    cam.current.dist = Math.max(
+      5,
+      Math.min(CAMERA_FAR, cam.current.dist - stickR.current.y * dt * 40)
+    );
 
     const { yaw, pitch, dist } = cam.current;
     const cx = lookAt.current.x + dist * Math.cos(pitch) * Math.cos(yaw);
@@ -414,7 +486,7 @@ export function initRenderer(gl: any, opts: InitOpts): RendererHandle {
         starPos[i * 3 + 1] = s[1];
         starPos[i * 3 + 2] = s[2];
       }
-      markNeedsUpdate(starGeom, 'position');
+      markNeedsUpdate(starGeom, "position");
       starGeom.setDrawRange(0, E.starCount);
       starGeom.computeBoundingSphere();
       lastStarCount = E.starCount;
@@ -460,30 +532,32 @@ export function initRenderer(gl: any, opts: InitOpts): RendererHandle {
         haloPos[hi * 3 + 0] = p[0];
         haloPos[hi * 3 + 1] = p[1];
         haloPos[hi * 3 + 2] = p[2];
-        haloSize[hi] = (2.0 + Math.min(4.0, E.getCivTech(i) * 1.2)) + 4.0;
+        haloSize[hi] = 2.0 + Math.min(4.0, E.getCivTech(i) * 1.2) + 4.0;
         hi++;
       }
     }
-    markNeedsUpdate(civGeom, 'position');
-    markNeedsUpdate(civGeom, 'aColor');
-    markNeedsUpdate(civGeom, 'aSize');
+    markNeedsUpdate(civGeom, "position");
+    markNeedsUpdate(civGeom, "aColor");
+    markNeedsUpdate(civGeom, "aSize");
     civGeom.setDrawRange(0, ci);
     civGeom.computeBoundingSphere();
 
-    markNeedsUpdate(haloGeom, 'position');
-    markNeedsUpdate(haloGeom, 'aSize');
+    markNeedsUpdate(haloGeom, "position");
+    markNeedsUpdate(haloGeom, "aSize");
     haloGeom.setDrawRange(0, hi);
     haloGeom.computeBoundingSphere();
 
     const bGeom = beacons.geometry as THREE.BufferGeometry;
-    const bPos = (bGeom.getAttribute('position') as THREE.BufferAttribute).array as Float32Array;
+    const bPos = (bGeom.getAttribute("position") as THREE.BufferAttribute)
+      .array as Float32Array;
     let bCount = 0;
     if (aliveCnt < 3) {
       const baseR = Math.max(8, ((engine as any).radius ?? 20) * 0.6);
       for (let i = 0; i < GUIDE_BEACONS; i++) {
         const a = (i / GUIDE_BEACONS) * Math.PI * 2;
         const r = baseR * (0.8 + 0.3 * Math.sin(i * 2.1));
-        const x = r * Math.cos(a), z = r * Math.sin(a);
+        const x = r * Math.cos(a),
+          z = r * Math.sin(a);
         bPos[i * 3 + 0] = x;
         bPos[i * 3 + 1] = 0;
         bPos[i * 3 + 2] = z;
@@ -491,7 +565,7 @@ export function initRenderer(gl: any, opts: InitOpts): RendererHandle {
       }
     }
     if (bCount > 0) {
-      markNeedsUpdate(bGeom, 'position');
+      markNeedsUpdate(bGeom, "position");
       bGeom.setDrawRange(0, bCount);
     } else {
       bGeom.setDrawRange(0, 0);
@@ -550,12 +624,12 @@ export function initRenderer(gl: any, opts: InitOpts): RendererHandle {
         return;
       }
     }
-    for (let i = 0; i < E.civCount; i++) if (E.isCivAlive(i)) {
-      focusCiv(i);
-      return;
-    }
+    for (let i = 0; i < E.civCount; i++)
+      if (E.isCivAlive(i)) {
+        focusCiv(i);
+        return;
+      }
   }
 
   return { focusCiv, focusRandom, focusPoint };
 }
-

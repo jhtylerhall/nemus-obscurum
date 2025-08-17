@@ -1,24 +1,27 @@
+// src/gl/Scene.tsx
 import React, {
   useCallback,
   useEffect,
   useImperativeHandle,
   useMemo,
   useRef,
-} from 'react';
-import { View, PixelRatio, LayoutChangeEvent } from 'react-native';
-import { GLView } from 'expo-gl';
-import * as THREE from 'three';
-import { GestureDetector } from 'react-native-gesture-handler';
+} from "react";
+import { View, PixelRatio, LayoutChangeEvent } from "react-native";
+import { GLView } from "expo-gl";
+import * as THREE from "three";
+import { GestureDetector } from "react-native-gesture-handler";
 
-import { MiniMap } from '../ui/MiniMap';
-import { Compass } from '../ui/Compass';
-import { Vignette } from '../ui/Vignette';
-import { CoordsHUD } from '../ui/CoordsHUD';
-import { AnalogStick } from '../ui/AnalogStick';
-import { pickStrongest, pickFrontier, pickNearest, pickDensest } from './poi';
-import { createCameraController } from './cameraController';
-import { initRenderer } from './renderer3d';
-import type { CameraState, RaycastRefs } from './types';
+import { MiniMap } from "../ui/MiniMap";
+import { Compass } from "../ui/Compass";
+import { Vignette } from "../ui/Vignette";
+import { CoordsHUD } from "../ui/CoordsHUD";
+import { AnalogStick } from "../ui/AnalogStick";
+import { pickStrongest, pickFrontier, pickNearest, pickDensest } from "./poi";
+import { createCameraController } from "./cameraController";
+import { initRenderer } from "./renderer3d";
+import type { CameraState, RaycastRefs } from "./types";
+import { createStarsMesh } from "./StarsMesh";
+import { getWorld } from "../sim/world";
 
 // Public API for parent components
 export type GLSceneHandle = {
@@ -49,7 +52,7 @@ type FocusTween = {
 
 export const GLScene = React.forwardRef<GLSceneHandle, Props>(function GLScene(
   { engine, maxStars, maxCivs, onFps },
-  ref,
+  ref
 ) {
   const cam = useRef<CameraState>({
     yaw: Math.PI * 0.15,
@@ -66,7 +69,10 @@ export const GLScene = React.forwardRef<GLSceneHandle, Props>(function GLScene(
     dist: 20,
   });
 
-  const rendererRef = useRef<{ renderer: THREE.WebGLRenderer; pr: number } | null>(null);
+  const rendererRef = useRef<{
+    renderer: THREE.WebGLRenderer;
+    pr: number;
+  } | null>(null);
   const viewSize = useRef({ w: 1, h: 1, pr: PixelRatio.get() });
   const onLayout = (e: LayoutChangeEvent) => {
     const { width, height } = e.nativeEvent.layout;
@@ -77,18 +83,24 @@ export const GLScene = React.forwardRef<GLSceneHandle, Props>(function GLScene(
       r.renderer.setSize(
         Math.max(1, Math.floor(width * r.pr)),
         Math.max(1, Math.floor(height * r.pr)),
-        false,
+        false
       );
+      // keep aspect/fov in sync
+      if (threeRefs.current.camera) {
+        threeRefs.current.camera.aspect = width / height;
+        threeRefs.current.camera.updateProjectionMatrix();
+      }
     }
   };
 
   const threeRefs = useRef<
     RaycastRefs & {
-      bgStars?: THREE.Points;
+      bgStars?: THREE.Points; // NEW: sim-driven star Points
       nebulas?: THREE.Sprite[];
       grid?: THREE.GridHelper;
       axes?: THREE.AxesHelper;
       beacons?: THREE.Points;
+      scene?: THREE.Scene;
     }
   >({});
 
@@ -118,7 +130,10 @@ export const GLScene = React.forwardRef<GLSceneHandle, Props>(function GLScene(
     if (engineIdx >= 0) rendererHandle.current?.focusCiv(engineIdx);
   }, []);
 
-  const gesture = useMemo(() => createCameraController(cam, handleTap), [handleTap]);
+  const gesture = useMemo(
+    () => createCameraController(cam, handleTap),
+    [handleTap]
+  );
 
   const jumpToWorldXY = useCallback((x: number, z: number) => {
     const d = Math.max(12, Math.min(200, Math.sqrt(x * x + z * z) * 1.8));
@@ -148,13 +163,17 @@ export const GLScene = React.forwardRef<GLSceneHandle, Props>(function GLScene(
         if (i >= 0) rendererHandle.current?.focusCiv(i);
       },
       focusNearest: () => {
-        const { x = 0, y = 0, z = 0 } = threeRefs.current.camera?.position ?? {};
+        const {
+          x = 0,
+          y = 0,
+          z = 0,
+        } = threeRefs.current.camera?.position ?? {};
         const i = pickNearest(engine, { x, y, z });
         if (i >= 0) rendererHandle.current?.focusCiv(i);
       },
       jumpToWorldXY,
     }),
-    [engine, jumpToWorldXY],
+    [engine, jumpToWorldXY]
   );
 
   useEffect(() => {
@@ -167,9 +186,44 @@ export const GLScene = React.forwardRef<GLSceneHandle, Props>(function GLScene(
     lookAt.current.set(0, 0, 0);
   }, [engine]);
 
+  // NEW: ensure stars are created from the actual sim and added to the scene
+  const ensureSimStars = useCallback(() => {
+    const { scene, camera } = threeRefs.current;
+    if (!scene || !camera) return;
+
+    // avoid duplicates on hot reloads
+    if (
+      threeRefs.current.bgStars &&
+      scene.children.includes(threeRefs.current.bgStars)
+    ) {
+      return;
+    }
+
+    // build (or get) the real world, then build a static Points cloud
+    const starsPoints = createStarsMesh(PixelRatio.get());
+    threeRefs.current.bgStars = starsPoints;
+    scene.add(starsPoints);
+
+    // sane camera + far clip for a big cluster
+    camera.near = Math.min(camera.near, 0.1);
+    camera.far = Math.max(camera.far, 1e9);
+    camera.updateProjectionMatrix();
+
+    // optional: set clear color to deep space
+    rendererRef.current?.renderer.setClearColor(0x000006, 1);
+
+    // place the camera so the real cluster is visible on boot
+    const world = getWorld();
+    // Prefer sim radius if engine exposes it, else approximate from params via world builder
+    const radius = (engine as any).radius ?? 200_000;
+    const dist = Math.max(20, radius * 2.2);
+    // If the renderer has a focusPoint helper, keep using it so UI overlays/motion stay in sync
+    rendererHandle.current?.focusPoint?.(0, 0, 0, dist);
+  }, [engine]);
+
   return (
     <GestureDetector gesture={gesture}>
-      <View style={{ flex: 1, position: 'relative' }} onLayout={onLayout}>
+      <View style={{ flex: 1, position: "relative" }} onLayout={onLayout}>
         <GLView
           style={{ flex: 1 }}
           onContextCreate={(gl) => {
@@ -187,19 +241,37 @@ export const GLScene = React.forwardRef<GLSceneHandle, Props>(function GLScene(
               onFps,
               rendererRef,
             });
+
+            // After renderer+scene+camera exist, attach the real-sim stars
+            // (initRenderer should populate threeRefs.current.scene/camera)
+            // We defer to the next tick to ensure they're set.
+            setTimeout(ensureSimStars, 0);
           }}
         />
 
         {/* Overlays */}
         <Vignette opacity={0.5} />
         <View
-          style={{ position: 'absolute', top: 8, right: 8, flexDirection: 'row', gap: 8 }}
+          style={{
+            position: "absolute",
+            top: 8,
+            right: 8,
+            flexDirection: "row",
+            gap: 8,
+          }}
           pointerEvents="box-none"
         >
-          <Compass yaw={overlay.current.cam.yaw} pitch={overlay.current.cam.pitch} />
+          <Compass
+            yaw={overlay.current.cam.yaw}
+            pitch={overlay.current.cam.pitch}
+          />
           <MiniMap
             radius={(engine as any).radius ?? 100}
-            cameraPos={{ x: overlay.current.cam.x, z: overlay.current.cam.z, yaw: overlay.current.cam.yaw }}
+            cameraPos={{
+              x: overlay.current.cam.x,
+              z: overlay.current.cam.z,
+              yaw: overlay.current.cam.yaw,
+            }}
             civXY={overlay.current.civ}
             onSelect={jumpToWorldXY}
           />
@@ -209,16 +281,15 @@ export const GLScene = React.forwardRef<GLSceneHandle, Props>(function GLScene(
           onChange={(x, y) => {
             stickL.current = { x, y };
           }}
-          style={{ position: 'absolute', left: 12, bottom: 80 }}
+          style={{ position: "absolute", left: 12, bottom: 80 }}
         />
         <AnalogStick
           onChange={(x, y) => {
             stickR.current = { x, y };
           }}
-          style={{ position: 'absolute', right: 12, bottom: 80 }}
+          style={{ position: "absolute", right: 12, bottom: 80 }}
         />
       </View>
     </GestureDetector>
   );
 });
-
