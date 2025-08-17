@@ -27,6 +27,7 @@ function Root() {
     { key: 'random',    label: 'Random',    onPress: () => sceneRef.current?.focusRandom() },
   ];
   const [paused, setPaused] = useState(false);
+  const [violent, setViolent] = useState(true);
   if (!engineRef.current) engineRef.current = new Engine({ ...params } as unknown as EngineParams, Math.floor(Math.random()*1e9));
 
   return (
@@ -72,6 +73,17 @@ function Root() {
           }}
         >
           <Text style={styles.toolText}>{paused ? 'Resume' : 'Pause'}</Text>
+        </Pressable>
+        <Pressable
+          style={styles.toolButton}
+          onPress={() => {
+            if (engineRef.current) {
+              engineRef.current.violence = !engineRef.current.violence;
+              setViolent(engineRef.current.violence);
+            }
+          }}
+        >
+          <Text style={styles.toolText}>{violent ? 'Violence On' : 'Violence Off'}</Text>
         </Pressable>
         <Pressable style={styles.toolButton} onPress={() => engineRef.current?.reset()}>
           <Text style={styles.toolText}>Reset</Text>
