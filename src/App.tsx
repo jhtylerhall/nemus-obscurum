@@ -19,12 +19,8 @@ function Root() {
   const engineRef = useRef<Engine | null>(null);
   const sceneRef = useRef<GLSceneHandle>(null);
   const items = [
-    { key: 'home',      label: 'Home',      onPress: () => sceneRef.current?.home() },
-    { key: 'strong',    label: 'Strongest', onPress: () => sceneRef.current?.focusStrongest() },
-    { key: 'frontier',  label: 'Frontier',  onPress: () => sceneRef.current?.focusFrontier() },
-    { key: 'densest',   label: 'Densest',   onPress: () => sceneRef.current?.focusDensest() },
-    { key: 'nearest',   label: 'Nearest',   onPress: () => sceneRef.current?.focusNearest() },
-    { key: 'random',    label: 'Random',    onPress: () => sceneRef.current?.focusRandom() },
+    { key: 'home',   label: 'Home',       onPress: () => sceneRef.current?.home() },
+    { key: 'random', label: 'Random Civ', onPress: () => sceneRef.current?.focusRandom() },
   ];
   const [paused, setPaused] = useState(false);
   const [violent, setViolent] = useState(true);
