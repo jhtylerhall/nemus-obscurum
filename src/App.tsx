@@ -7,10 +7,10 @@ import { SafeAreaView, View, Text, StyleSheet, Pressable } from 'react-native';
 import { useAppDispatch, useAppSelector } from './state/hooks';
 import { setStats } from './features/sim/simSlice';
 import { GLScene, GLSceneHandle } from './gl/Scene';
-import { POIBar } from './ui/POIBar';
 import { Engine } from './sim/engine';
 import type { EngineParams } from './sim/types';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { ActionBar } from './ui/ActionBar';
 
 function Root() {
   const params = useAppSelector(s => s.params);
@@ -18,14 +18,6 @@ function Root() {
   const dispatch = useAppDispatch();
   const engineRef = useRef<Engine | null>(null);
   const sceneRef = useRef<GLSceneHandle>(null);
-  const items = [
-    { key: 'home',      label: 'Home',      onPress: () => sceneRef.current?.home() },
-    { key: 'strong',    label: 'Strongest', onPress: () => sceneRef.current?.focusStrongest() },
-    { key: 'frontier',  label: 'Frontier',  onPress: () => sceneRef.current?.focusFrontier() },
-    { key: 'densest',   label: 'Densest',   onPress: () => sceneRef.current?.focusDensest() },
-    { key: 'nearest',   label: 'Nearest',   onPress: () => sceneRef.current?.focusNearest() },
-    { key: 'random',    label: 'Random',    onPress: () => sceneRef.current?.focusRandom() },
-  ];
   const [paused, setPaused] = useState(false);
   if (!engineRef.current) engineRef.current = new Engine({ ...params } as unknown as EngineParams, Math.floor(Math.random()*1e9));
 
@@ -56,9 +48,26 @@ function Root() {
             }
           }}
         />
-        <View pointerEvents="box-none" style={{ position: 'absolute', top: 6, alignSelf: 'center' }}>
-          <POIBar items={items} />
-        </View>
+        <ActionBar
+          style={{ marginTop: 6 }}
+          onHome={() => sceneRef.current?.home()}
+          onStrongest={() => sceneRef.current?.focusStrongest()}
+          onFrontier={() => sceneRef.current?.focusFrontier()}
+          onDensest={() => sceneRef.current?.focusDensest()}
+          onNearest={() => sceneRef.current?.focusNearest()}
+          onRandom={() => sceneRef.current?.focusRandom()}
+          onSpawnCiv={() => {
+            const idx = engineRef.current?.spawnRandomCiv?.();
+            if (typeof idx === 'number' && idx >= 0) sceneRef.current?.focusCiv(idx);
+          }}
+          onMoreStars={() => { engineRef.current?.spawnRandomStars?.(10000); }}
+          onPopulate={() => {
+            const e = engineRef.current!;
+            e.spawnRandomStars?.(30000);
+            for (let i = 0; i < 8; i++) e.spawnRandomCiv?.();
+            sceneRef.current?.home();
+          }}
+        />
       </View>
 
       <View style={styles.toolbar}>

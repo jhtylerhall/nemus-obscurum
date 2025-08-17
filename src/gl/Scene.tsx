@@ -6,17 +6,19 @@ import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { MiniMap } from "../ui/MiniMap";
 import { Compass } from "../ui/Compass";
 import { Vignette } from "../ui/Vignette";
+import { ShipIndicator } from "../ui/ShipIndicator";
 import { CoordsHUD } from "../ui/CoordsHUD";
+import { EmptyHint } from "../ui/EmptyHint";
 import { AnalogStick } from "../ui/AnalogStick";
 import { adaptEngine, sampleCivs } from "./engineAdapter";
 import { pickStrongest, pickFrontier, pickNearest, pickDensest } from "./poi";
 
 // ---------- Tunables ----------
-const CAMERA_FAR = 5000;
-const STAR_U_SCALE = 220.0;       // bigger point size at distance
-const STAR_U_MAX   = 24.0;        // px * pixelRatio
-const CIV_U_MAX    = 28.0;        // px * pixelRatio
-const GUIDE_BEACONS = 10;         // how many “safety” markers when scene is empty
+const CAMERA_FAR = 8000;
+const STAR_U_SCALE = 380.0;   // brighter/larger by default for visibility
+const STAR_U_MAX   = 34.0;
+const CIV_U_MAX    = 28.0;
+const GUIDE_BEACONS = 10;
 
 // ---------- small helpers ----------
 function markNeedsUpdate(geom: THREE.BufferGeometry, key: string) {
@@ -186,7 +188,9 @@ export const GLScene = React.forwardRef<GLSceneHandle, Props>(function GLScene(
   function focusDensest()   { const i = pickDensest(engine);   if (i >= 0) focusCiv(i); }
   function focusNearest() {
     const { x, y, z } = threeRefs.current.camera?.position ?? { x: 0, y: 0, z: 0 };
-    const i = pickNearest(engine, { x, y, z }); if (i >= 0) focusCiv(i);
+    let i = pickNearest(engine, { x, y, z });
+    if (i < 0 && (engine as any).spawnRandomCiv) { const idx = (engine as any).spawnRandomCiv(); if (idx >= 0) i = idx; }
+    if (i >= 0) focusCiv(i);
   }
   function jumpToWorldXY(x: number, z: number) {
     const target = new THREE.Vector3(x, 0, z);
@@ -196,7 +200,7 @@ export const GLScene = React.forwardRef<GLSceneHandle, Props>(function GLScene(
   }
 
   useImperativeHandle(ref, () => ({
-    focusCiv, focusRandom: () => { let t=200; while (t--) { const r = (Math.random()*E.civCount)|0; if (E.isCivAlive(r)) { focusCiv(r); return; } } },
+    focusCiv, focusRandom: () => { let t=200; while (t--) { const r = (Math.random()*E.civCount)|0; if (E.isCivAlive(r)) { focusCiv(r); return; } } if ((engine as any).spawnRandomCiv) { const idx = (engine as any).spawnRandomCiv(); if (idx >= 0) focusCiv(idx); } },
     home, focusStrongest, focusFrontier, focusDensest, focusNearest, jumpToWorldXY,
   }), [engine]);
 
@@ -367,6 +371,16 @@ export const GLScene = React.forwardRef<GLSceneHandle, Props>(function GLScene(
             } else if (rs > 0) {
               cam.current.dist = Math.max(20, rs * 2.0);
             }
+            
+            // auto-seed if empty
+            const autoSeed = () => {
+              const hasStars = E.starCount > 50;
+              let anyAlive = false;
+              for (let i=0;i<E.civCount && !anyAlive;i++) if (E.isCivAlive(i)) anyAlive = true;
+              if (!hasStars && (engine as any).spawnRandomStars) (engine as any).spawnRandomStars(15000);
+              if (!anyAlive && (engine as any).spawnRandomCiv) (engine as any).spawnRandomCiv();
+            };
+            autoSeed();
 
             // loop
             let last = Date.now(), ema = 60;
@@ -505,6 +519,7 @@ export const GLScene = React.forwardRef<GLSceneHandle, Props>(function GLScene(
 
         {/* Overlays */}
         <Vignette opacity={0.5} />
+        <ShipIndicator yaw={overlay.current.cam.yaw} pitch={overlay.current.cam.pitch} />
         <View style={{ position: 'absolute', top: 8, right: 8, flexDirection: 'row', gap: 8 }} pointerEvents="box-none">
           <Compass yaw={overlay.current.cam.yaw} pitch={overlay.current.cam.pitch} />
           <MiniMap
@@ -515,6 +530,7 @@ export const GLScene = React.forwardRef<GLSceneHandle, Props>(function GLScene(
           />
         </View>
         <CoordsHUD cam={overlay.current.cam} radius={(engine as any).radius} />
+        <EmptyHint visible={((engine as any).radius ?? 0) <= 1 && !overlay.current.civ.length} />
         <AnalogStick
           onChange={(x, y) => {
             stickL.current = { x, y };
