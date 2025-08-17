@@ -174,6 +174,19 @@ export const GLScene = React.forwardRef<GLSceneHandle, Props>(function GLScene(
     focusedIdx.current = i;
     focusPulse.current = 0;
   }
+  function teleportToCiv(i: number) {
+    if (i < 0 || i >= E.civCount || !E.isCivAlive(i)) return;
+    const p = E.getCivPos(i);
+    const target = new THREE.Vector3(p[0], p[1], p[2]);
+    lookAt.current.copy(target);
+    const dir = target.clone().normalize();
+    cam.current.dist = Math.max(12, Math.min(200, target.length() * 1.8));
+    cam.current.yaw = Math.atan2(-dir.z, -dir.x);
+    cam.current.pitch = Math.asin(-dir.y);
+    focusTween.current.active = false;
+    focusedIdx.current = i;
+    focusPulse.current = 0;
+  }
   function home() {
     const r = (engine as any).radius ?? 50;
     cam.current.yaw = Math.PI * 0.15;
@@ -196,7 +209,17 @@ export const GLScene = React.forwardRef<GLSceneHandle, Props>(function GLScene(
   }
 
   useImperativeHandle(ref, () => ({
-    focusCiv, focusRandom: () => { let t=200; while (t--) { const r = (Math.random()*E.civCount)|0; if (E.isCivAlive(r)) { focusCiv(r); return; } } },
+    focusCiv,
+    focusRandom: () => {
+      let t = 200;
+      while (t--) {
+        const r = (Math.random() * E.civCount) | 0;
+        if (E.isCivAlive(r)) {
+          teleportToCiv(r);
+          return;
+        }
+      }
+    },
     home, focusStrongest, focusFrontier, focusDensest, focusNearest, jumpToWorldXY,
   }), [engine]);
 
