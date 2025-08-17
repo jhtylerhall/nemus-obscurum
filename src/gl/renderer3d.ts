@@ -148,6 +148,7 @@ type InitOpts = {
       yaw: number;
       pitch: number;
       dist: number;
+      fov: number;
     };
   }>;
   threeRefs: React.MutableRefObject<
@@ -578,6 +579,7 @@ export function initRenderer(gl: any, opts: InitOpts): RendererHandle {
       yaw: cam.current.yaw,
       pitch: cam.current.pitch,
       dist,
+      fov: cam.current.fov,
     };
     const tNow = Date.now();
     if (tNow - overlay.current.lastUpdate > 100) {

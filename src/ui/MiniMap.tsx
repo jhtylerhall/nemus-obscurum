@@ -6,7 +6,7 @@ type XY = [number, number];
 
 type Props = {
   radius: number;
-  cameraPos: { x: number; z: number; yaw: number };
+  cameraPos: { x: number; z: number; yaw: number; fov: number };
   civXY: XY[];
   size?: number;
   onSelect?: (x: number, z: number) => void;
@@ -41,10 +41,19 @@ export const MiniMap: React.FC<Props> = ({ radius, cameraPos, civXY, size = 140,
         {(() => {
           const p = worldToMap(cameraPos.x, cameraPos.z);
           const len = 12;
+          const fov = cameraPos.fov;
           const hx = Math.cos(cameraPos.yaw) * len;
           const hz = Math.sin(cameraPos.yaw) * len;
+          const lx = Math.cos(cameraPos.yaw - fov / 2) * len;
+          const lz = Math.sin(cameraPos.yaw - fov / 2) * len;
+          const rx = Math.cos(cameraPos.yaw + fov / 2) * len;
+          const rz = Math.sin(cameraPos.yaw + fov / 2) * len;
           return (
             <>
+              <Path
+                d={`M ${p.x} ${p.y} L ${p.x + lx} ${p.y + lz} L ${p.x + rx} ${p.y + rz} Z`}
+                fill="rgba(255,209,102,0.2)"
+              />
               <Circle cx={p.x} cy={p.y} r={3.5} fill="#ffd166" />
               <Line x1={p.x} y1={p.y} x2={p.x + hx} y2={p.y + hz} stroke="#ffd166" strokeWidth={2} />
             </>
