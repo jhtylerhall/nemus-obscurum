@@ -20,7 +20,6 @@ import { createCameraController } from "./cameraController";
 import { initRenderer } from "./renderer3d";
 import type { CameraState, RaycastRefs } from "./types";
 import { createStarsMesh } from "./StarsMesh";
-import { getWorld } from "../sim/world";
 
 // Public API for parent components
 export type GLSceneHandle = {
@@ -203,6 +202,16 @@ export const GLScene = React.forwardRef<GLSceneHandle, Props>(function GLScene(
     threeRefs.current.bgStars = starsPoints;
     scene.add(starsPoints);
 
+    // fit generated stars to the simulation's scale so they're not rendered
+    // light-years away. Scale by the ratio between engine radius and the
+    // world builder's star radius (from the geometry's bounding sphere).
+    const bs = starsPoints.geometry.boundingSphere;
+    const targetRadius = (engine as any).radius ?? bs?.radius ?? 1;
+    if (bs && bs.radius > 0) {
+      const scale = targetRadius / bs.radius;
+      starsPoints.scale.setScalar(scale);
+    }
+
     // sane camera + far clip for a big cluster
     camera.near = Math.min(camera.near, 0.1);
     camera.far = Math.max(camera.far, 1e9);
@@ -212,10 +221,7 @@ export const GLScene = React.forwardRef<GLSceneHandle, Props>(function GLScene(
     rendererRef.current?.renderer.setClearColor(0x000006, 1);
 
     // place the camera so the real cluster is visible on boot
-    const world = getWorld();
-    // Prefer sim radius if engine exposes it, else approximate from params via world builder
-    const radius = (engine as any).radius ?? 200_000;
-    const dist = Math.max(20, radius * 2.2);
+    const dist = Math.max(20, targetRadius * 2.2);
     // If the renderer has a focusPoint helper, keep using it so UI overlays/motion stay in sync
     rendererHandle.current?.focusPoint?.(0, 0, 0, dist);
   }, [engine]);
