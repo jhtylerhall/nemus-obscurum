@@ -21,11 +21,11 @@ function Root() {
   const sceneRef = useRef<GLSceneHandle>(null);
 
   const items = [
-    { key: "home", label: "Home", onPress: () => sceneRef.current?.home() },
+    { key: "home", label: "Home", onPress: () => sceneRef.current?.home?.() },
     {
       key: "random",
       label: "Random Civ",
-      onPress: () => sceneRef.current?.focusRandom(),
+      onPress: () => sceneRef.current?.focusRandom?.(),
     },
   ];
 
@@ -80,7 +80,7 @@ function Root() {
           engine={engineRef.current!}
           maxStars={params.maxStars}
           maxCivs={params.maxCivs}
-          onFps={(fps) => {
+          onFps={(fps: number) => {
             const s = engineRef.current!.snapshot();
             if (s.step % 15 === 0) {
               dispatch(

@@ -1,291 +1,57 @@
-// src/gl/Scene.tsx
-import React, {
-  useCallback,
-  useEffect,
-  useImperativeHandle,
-  useMemo,
-  useRef,
-} from "react";
-import { View, PixelRatio, LayoutChangeEvent } from "react-native";
-import { GLView } from "expo-gl";
-import * as THREE from "three";
-import { GestureDetector } from "react-native-gesture-handler";
+import React,{memo,useEffect,useRef}from'react';import* as THREE from'three';
+import{createRenderer,resizeRendererToDisplaySize}from'./threeSetup';
+import{buildStarfield,spawnVisibleStarAtFrustumCenter,spawnCivVisible}from'./stars';
+import{useAnimationFrame}from'./useAnimationFrame';import{useFlyControls}from'./useFly';
+import{useTouchLook}from'./useTouchLook';
+import'../styles/scene.css';
 
-import { MiniMap } from "../ui/MiniMap";
-import { Vignette } from "../ui/Vignette";
-import { CoordsHUD } from "../ui/CoordsHUD";
-import { AnalogStick } from "../ui/AnalogStick";
-import { pickStrongest, pickFrontier, pickNearest, pickDensest } from "./poi";
-import { createCameraController } from "./cameraController";
-import { initRenderer } from "./renderer3d";
-import type { CameraState, RaycastRefs } from "./types";
-import { createStarsMesh } from "./StarsMesh";
-import { getWorld } from "../sim/world";
+function SceneComponent(){
+  const rootRef=useRef<HTMLDivElement>(null);
+  const canvasRef=useRef<HTMLCanvasElement>(null);
+  const rendererRef=useRef<THREE.WebGLRenderer|null>(null);
+  const sceneRef=useRef(new THREE.Scene());
+  const cameraRef=useRef<THREE.PerspectiveCamera|null>(null);
 
-// Public API for parent components
+  useEffect(()=>{const canvas=canvasRef.current!;const r=createRenderer(canvas);rendererRef.current=r;
+    const cam=new THREE.PerspectiveCamera(60,1,0.1,2e6);cam.position.set(0,0,120);cam.lookAt(0,0,0);cameraRef.current=cam;
+    const sc=sceneRef.current;sc.add(new THREE.AmbientLight(0xffffff,0.18));
+    sc.add(new THREE.HemisphereLight(0x88aaff,0x080820,0.35));
+    const dir=new THREE.DirectionalLight(0xffffff,0.15);dir.position.set(1,1,2);sc.add(dir);
+    const stars=buildStarfield({count:5e4,radius:5000,seed:42});sc.add(stars.group);
+    // Resize handling
+    const onResize=()=>resizeRendererToDisplaySize(r,cam);onResize();
+    const ro=new ResizeObserver(onResize);ro.observe(rootRef.current!);
+    return()=>{ro.disconnect();(r as any).__disposeExtras?.();sc.clear();r.dispose();};},[]);
+
+  // Controls
+  const fly=useRef<ReturnType<typeof useFlyControls> | undefined>(undefined);
+  useEffect(()=>{if(cameraRef.current&&rootRef.current)
+    fly.current=useFlyControls(cameraRef.current,rootRef.current);},[]);
+  useTouchLook(cameraRef.current ?? undefined, rootRef.current ?? undefined);
+
+  // Render loop
+  useAnimationFrame(dt=>{const r=rendererRef.current,c=cameraRef.current,s=sceneRef.current;if(!r||!c)return;
+    fly.current?.(dt); r.render(s,c);});
+
+  return(<div ref={rootRef} className="scene-root">
+    <canvas ref={canvasRef}/>
+    <div className="scene-hud" style={{position:'absolute',left:8,top:8,display:'flex',gap:6,zIndex:10}}>
+      <button onClick={()=>spawnVisibleStarAtFrustumCenter(sceneRef.current,cameraRef.current!)}>Spawn Star</button>
+      <button onClick={()=>spawnCivVisible(sceneRef.current,cameraRef.current!)}>Spawn Civ</button>
+    </div>
+  </div>);
+}
+export const Scene=memo(SceneComponent);
 export type GLSceneHandle = {
-  focusCiv(i: number): void;
-  focusRandom(): void;
-  home(): void;
-  focusStrongest(): void;
-  focusFrontier(): void;
-  focusDensest(): void;
-  focusNearest(): void;
-  jumpToWorldXY(x: number, z: number): void;
+  home?: () => void;
+  focusRandom?: () => void;
+  focusCiv?: (i: number) => void;
+  focusStrongest?: () => void;
+  focusFrontier?: () => void;
+  focusDensest?: () => void;
+  focusNearest?: () => void;
+  jumpToWorldXY?: (x: number, z: number) => void;
 };
-
-type Props = {
-  engine: any;
-  maxStars: number;
-  maxCivs: number;
-  onFps?: (fps: number) => void;
-};
-
-type FocusTween = {
-  active: boolean;
-  t: number;
-  from: THREE.Vector3;
-  to: THREE.Vector3;
-  dist: number;
-};
-
-export const GLScene = React.forwardRef<GLSceneHandle, Props>(function GLScene(
-  { engine, maxStars, maxCivs, onFps },
-  ref
-) {
-  const cam = useRef<CameraState>({
-    yaw: Math.PI * 0.15,
-    pitch: Math.PI * 0.12,
-    dist: 20,
-    fov: (60 * Math.PI) / 180,
-  });
-  const lookAt = useRef(new THREE.Vector3(0, 0, 0));
-  const focusTween = useRef<FocusTween>({
-    active: false,
-    t: 0,
-    from: new THREE.Vector3(),
-    to: new THREE.Vector3(),
-    dist: 20,
-  });
-
-  const rendererRef = useRef<{
-    renderer: THREE.WebGLRenderer;
-    pr: number;
-  } | null>(null);
-  const viewSize = useRef({ w: 1, h: 1, pr: PixelRatio.get() });
-  const onLayout = (e: LayoutChangeEvent) => {
-    const { width, height } = e.nativeEvent.layout;
-    viewSize.current.w = width;
-    viewSize.current.h = height;
-    const r = rendererRef.current;
-    if (r?.renderer) {
-      r.renderer.setSize(
-        Math.max(1, Math.floor(width * r.pr)),
-        Math.max(1, Math.floor(height * r.pr)),
-        false
-      );
-      // keep aspect/fov in sync
-      if (threeRefs.current.camera) {
-        threeRefs.current.camera.aspect = width / height;
-        threeRefs.current.camera.updateProjectionMatrix();
-      }
-    }
-  };
-
-  const threeRefs = useRef<
-    RaycastRefs & {
-      bgStars?: THREE.Points; // NEW: sim-driven star Points
-      nebulas?: THREE.Sprite[];
-      grid?: THREE.GridHelper;
-      axes?: THREE.AxesHelper;
-      beacons?: THREE.Points;
-      scene?: THREE.Scene;
-    }
-  >({});
-
-  const overlay = useRef({
-    civ: [] as [number, number][],
-    lastUpdate: 0,
-    cam: { x: 0, y: 0, z: 0, yaw: 0, pitch: 0, dist: 20, fov: (60 * Math.PI) / 180 },
-  });
-
-  const stickL = useRef({ x: 0, y: 0 });
-  const stickR = useRef({ x: 0, y: 0 });
-
-  const rendererHandle = useRef<ReturnType<typeof initRenderer> | null>(null);
-
-  const handleTap = useCallback((x: number, y: number) => {
-    const { camera, civPoints, raycaster, civIndexMap } = threeRefs.current;
-    if (!camera || !civPoints || !raycaster || !civIndexMap) return;
-    const { w, h } = viewSize.current;
-    const ndc = new THREE.Vector2((x / w) * 2 - 1, -(y / h) * 2 + 1);
-    raycaster.setFromCamera(ndc, camera);
-    (raycaster.params as any).Points = { threshold: 0.14 * PixelRatio.get() };
-    const hits = raycaster.intersectObject(civPoints, false);
-    if (!hits.length) return;
-    const idx = (hits[0] as any).index ?? -1;
-    if (idx < 0) return;
-    const engineIdx = civIndexMap[idx];
-    if (engineIdx >= 0) rendererHandle.current?.focusCiv(engineIdx);
-  }, []);
-
-  const gesture = useMemo(
-    () => createCameraController(cam, handleTap),
-    [handleTap]
-  );
-
-  const jumpToWorldXY = useCallback((x: number, z: number) => {
-    const d = Math.max(12, Math.min(200, Math.sqrt(x * x + z * z) * 1.8));
-    rendererHandle.current?.focusPoint(x, 0, z, d);
-  }, []);
-
-  useImperativeHandle(
-    ref,
-    () => ({
-      focusCiv: (i) => rendererHandle.current?.focusCiv(i),
-      focusRandom: () => rendererHandle.current?.focusRandom(),
-      home: () => {
-        const r = (engine as any).radius ?? 50;
-        const d = Math.max(20, r * 2.2);
-        rendererHandle.current?.focusPoint(0, 0, 0, d);
-      },
-      focusStrongest: () => {
-        const i = pickStrongest(engine);
-        if (i >= 0) rendererHandle.current?.focusCiv(i);
-      },
-      focusFrontier: () => {
-        const i = pickFrontier(engine);
-        if (i >= 0) rendererHandle.current?.focusCiv(i);
-      },
-      focusDensest: () => {
-        const i = pickDensest(engine);
-        if (i >= 0) rendererHandle.current?.focusCiv(i);
-      },
-      focusNearest: () => {
-        const {
-          x = 0,
-          y = 0,
-          z = 0,
-        } = threeRefs.current.camera?.position ?? {};
-        const i = pickNearest(engine, { x, y, z });
-        if (i >= 0) rendererHandle.current?.focusCiv(i);
-      },
-      jumpToWorldXY,
-    }),
-    [engine, jumpToWorldXY]
-  );
-
-  useEffect(() => {
-    cam.current = {
-      yaw: Math.PI * 0.15,
-      pitch: Math.PI * 0.12,
-      dist: 20,
-      fov: (60 * Math.PI) / 180,
-    };
-    lookAt.current.set(0, 0, 0);
-  }, [engine]);
-
-  // NEW: ensure stars are created from the actual sim and added to the scene
-  const ensureSimStars = useCallback(() => {
-    const { scene, camera } = threeRefs.current;
-    if (!scene || !camera) return;
-
-    // avoid duplicates on hot reloads
-    if (
-      threeRefs.current.bgStars &&
-      scene.children.includes(threeRefs.current.bgStars)
-    ) {
-      return;
-    }
-
-    // build (or get) the real world, then build a static Points cloud
-    const starsPoints = createStarsMesh(PixelRatio.get());
-    threeRefs.current.bgStars = starsPoints;
-    scene.add(starsPoints);
-
-    // sane camera + far clip for a big cluster
-    camera.near = Math.min(camera.near, 0.1);
-    camera.far = Math.max(camera.far, 1e9);
-    camera.updateProjectionMatrix();
-
-    // optional: set clear color to deep space
-    rendererRef.current?.renderer.setClearColor(0x000006, 1);
-
-    // place the camera so the real cluster is visible on boot
-    const world = getWorld();
-    // Prefer sim radius if engine exposes it, else approximate from params via world builder
-    const radius = (engine as any).radius ?? 200_000;
-    const dist = Math.max(20, radius * 2.2);
-    // If the renderer has a focusPoint helper, keep using it so UI overlays/motion stay in sync
-    rendererHandle.current?.focusPoint?.(0, 0, 0, dist);
-  }, [engine]);
-
-  return (
-    <GestureDetector gesture={gesture}>
-      <View style={{ flex: 1, position: "relative" }} onLayout={onLayout}>
-        <GLView
-          style={{ flex: 1 }}
-          onContextCreate={(gl) => {
-            rendererHandle.current = initRenderer(gl, {
-              engine,
-              maxStars,
-              maxCivs,
-              cam,
-              lookAt,
-              focusTween,
-              stickL,
-              stickR,
-              overlay,
-              threeRefs,
-              onFps,
-              rendererRef,
-            });
-
-            // After renderer+scene+camera exist, attach the real-sim stars
-            // (initRenderer should populate threeRefs.current.scene/camera)
-            // We defer to the next tick to ensure they're set.
-            setTimeout(ensureSimStars, 0);
-          }}
-        />
-
-        {/* Overlays */}
-        <Vignette opacity={0.5} />
-        <View
-          style={{
-            position: "absolute",
-            top: 8,
-            right: 8,
-            flexDirection: "row",
-            gap: 8,
-          }}
-          pointerEvents="box-none"
-        >
-          <MiniMap
-            radius={(engine as any).radius ?? 100}
-            cameraPos={{
-              x: overlay.current.cam.x,
-              z: overlay.current.cam.z,
-              yaw: overlay.current.cam.yaw,
-              fov: overlay.current.cam.fov,
-            }}
-            civXY={overlay.current.civ}
-            onSelect={jumpToWorldXY}
-          />
-        </View>
-        <CoordsHUD cam={overlay.current.cam} radius={(engine as any).radius} />
-        <AnalogStick
-          onChange={(x, y) => {
-            stickL.current = { x, y };
-          }}
-          style={{ position: "absolute", left: 12, bottom: 80 }}
-        />
-        <AnalogStick
-          onChange={(x, y) => {
-            stickR.current = { x, y };
-          }}
-          style={{ position: "absolute", right: 12, bottom: 80 }}
-        />
-      </View>
-    </GestureDetector>
-  );
-});
+export const GLScene = memo(React.forwardRef<GLSceneHandle, any>(function GLSceneComponent(_props, _ref){
+  return <SceneComponent />;
+}));
