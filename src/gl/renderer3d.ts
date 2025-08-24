@@ -256,7 +256,6 @@ export function initRenderer(gl: any, opts: InitOpts): RendererHandle {
   nebB.position.set(R * 0.6, -R * 0.25, R * 0.2);
   nebC.position.set(-R * 0.2, -R * 0.3, R * 0.7);
   scene.add(nebA, nebB, nebC);
-  threeRefs.current.bgStars = bgStars;
   threeRefs.current.nebulas = [nebA, nebB, nebC];
 
   // grid/axes for orientation
