@@ -1,71 +1,68 @@
-# Nemus Obscurum
+# Dark Forest Homeworld
 
-A real-time, Dark Forest-inspired simulation built with [Expo](https://expo.dev/) and React Native. The app renders a procedural starfield and evolving civilisations using `expo-gl` and `three.js`.
-
-## Features
-
-- WebGL rendering via `expo-gl` with a Three.js scene.
-- Simulation engine driving procedurally generated stars and civs.
-- Points-of-interest shortcuts to jump to home, strongest, frontier, densest, nearest or random systems.
-- Heads-up display showing reveals, kills and current FPS.
-- Pause/resume and reset controls.
+A desktop/web prototype of a “Dark Forest” homeworld viewer built with Vite, TypeScript, and Three.js. The app renders a stylised planet, star, and orbiting artifacts while a lightweight civilisation simulation drives the visuals. An optional CPU ray tracer can render an offline frame for experimentation.
 
 ## Getting Started
 
 ### Prerequisites
 
-- [Node.js](https://nodejs.org/) 18+
-- npm
-- Expo CLI (`npm install -g expo-cli`) or use `npx expo`
-- Expo Go or a custom dev client on your iOS/Android device. Web is **not** supported because of `expo-gl`.
+- Node.js 18+
+- pnpm (recommended) or npm
 
 ### Installation
 
 ```bash
-npm install
+pnpm install
 ```
 
-### Running
+### Development Server
 
-Launch the app with Expo:
+```bash
+pnpm dev
+```
 
-- **iOS simulator:**
-  ```bash
-  npm run ios
-  ```
-- **Android emulator:**
-  ```bash
-  npm run android
-  ```
-- **Generic start:**
-  ```bash
-  npm start
-  ```
-  This opens Expo Dev Tools so you can choose a platform.
+Vite opens the app in your browser at `http://localhost:5173` with hot module reloading.
 
-Use pinch gestures to zoom and drag to orbit the camera. The POI bar lets you quickly focus on interesting regions.
+### Production Build
 
-## Performance Tuning
+```bash
+pnpm build
+pnpm preview
+```
 
-If your device struggles to keep up, lower the defaults in `src/features/params/paramsSlice.ts`:
+### Offline Ray-Tracer
 
-- `maxStars` (e.g. `80_000`)
-- `maxCivs` (e.g. `10_000`)
+```bash
+pnpm rt:frame
+```
 
-Restart the app after adjusting these values.
+This command writes a `rt-output.ppm` file containing a simple ray-traced render.
 
-## Project Structure
+## Project Layout
 
-- `src/gl` – WebGL scene and rendering helpers.
-- `src/sim` – Simulation engine and types.
-- `src/features` – Redux slices for parameters and simulation stats.
-- `src/ui` – UI components such as the POI bar.
-- `src/state` – Redux store configuration and hooks.
+```
+dark-forest-homeworld/
+├─ public/
+│  └─ ui/
+├─ src/
+│  ├─ core/              # App orchestration, camera rig, timing helpers
+│  ├─ render/            # Three.js meshes, materials, shaders
+│  ├─ sim/               # Civ simulation, events, orbital helpers
+│  ├─ spatial/           # Octree + BVH data structures
+│  ├─ ui/                # HUD overlays and DOM panels
+│  ├─ save/              # Snapshot schema + persistence helpers
+│  └─ rt/                # Offline CPU ray tracer utilities
+└─ vite.config.ts
+```
 
-## Scripts
+## Milestones
 
-- `npm run ios` / `npm run android` – launch the app on iOS/Android.
-- `npm test` – run TypeScript type checks.
+1. **First light** – orbit camera, star + planet render, simulation loop.
+2. **Atmosphere & orbits** – halo shell, orbit visualisers, moon proxies.
+3. **Civ feedback** – HUD + energy driven material tweaks.
+4. **Actions UI** – aid/strike controls wired to the civ model.
+5. **Spatial structures** – octree & BVH scaffolding for visibility queries.
+6. **Offline rendering** – CPU ray-tracer output via `pnpm rt:frame`.
 
 ## License
 
