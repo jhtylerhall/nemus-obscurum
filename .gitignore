@@ -56,6 +56,9 @@ web_modules/
 # Optional stylelint cache
 .stylelintcache
 
+# Expo local state
+.expo/
+
 # Optional REPL history
 .node_repl_history
 
