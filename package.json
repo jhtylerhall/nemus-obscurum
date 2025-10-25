@@ -30,6 +30,7 @@
   "devDependencies": {
     "@types/react": "~19.1.0",
     "@types/three": "^0.179.0",
+    "babel-preset-expo": "~13.2.3",
     "typescript": "~5.9.2"
   }
 }
