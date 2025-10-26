@@ -1,7 +1,10 @@
-import React, { useMemo, useState } from "react";
-import { SafeAreaView, View, Text, StyleSheet } from "react-native";
+import React, { useMemo, useRef, useState } from "react";
+import { SafeAreaView, View, Text, StyleSheet, Pressable } from "react-native";
 
-import { HomeworldScene } from "./components/HomeworldScene";
+import {
+  HomeworldScene,
+  type HomeworldSceneHandle,
+} from "./components/HomeworldScene";
 import type { HomeworldStats } from "./homeworld/HomeworldApp";
 
 const numberFormat = new Intl.NumberFormat("en-US", {
@@ -14,6 +17,7 @@ const percentFormat = new Intl.NumberFormat("en-US", {
 });
 
 export default function App() {
+  const sceneRef = useRef<HomeworldSceneHandle | null>(null);
   const [stats, setStats] = useState<HomeworldStats | null>(null);
 
   const surfaceStatus = useMemo(() => {
@@ -25,11 +29,17 @@ export default function App() {
 
   return (
     <View style={styles.container}>
-      <HomeworldScene onStats={setStats} />
-      <SafeAreaView pointerEvents="none" style={styles.overlay}>
+      <HomeworldScene ref={sceneRef} onStats={setStats} />
+      <SafeAreaView pointerEvents="box-none" style={styles.overlay}>
         <View style={styles.panel}>
           <Text style={styles.title}>Homeworld Status</Text>
           <Text style={styles.subtitle}>{surfaceStatus}</Text>
+          <Pressable
+            style={styles.button}
+            onPress={() => sceneRef.current?.recenter()}
+          >
+            <Text style={styles.buttonLabel}>Recenter on Planet</Text>
+          </Pressable>
           <View style={styles.row}>
             <Text style={styles.label}>Population</Text>
             <Text style={styles.value}>
@@ -79,12 +89,26 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   panel: {
-    pointerEvents: "auto",
     backgroundColor: "rgba(4, 12, 24, 0.72)",
     borderRadius: 12,
     padding: 16,
     borderWidth: 1,
     borderColor: "rgba(96, 168, 255, 0.35)",
+  },
+  button: {
+    marginTop: 8,
+    marginBottom: 16,
+    alignSelf: "flex-start",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    backgroundColor: "rgba(84, 132, 255, 0.28)",
+    borderWidth: 1,
+    borderColor: "rgba(120, 168, 255, 0.45)",
+  },
+  buttonLabel: {
+    color: "#e7f1ff",
+    fontWeight: "600",
   },
   title: {
     color: "#e2f0ff",

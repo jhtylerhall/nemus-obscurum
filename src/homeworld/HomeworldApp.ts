@@ -49,6 +49,7 @@ export class HomeworldApp {
     this.renderer.setSize(opts.width, opts.height, false);
 
     this.rig = new CameraRig(opts.width, opts.height);
+    this.rig.recenter();
     this.scene.background = new THREE.Color("#02040f");
     this.scene.add(makeAmbientLight());
     const sunLight = makeStarLight();
@@ -91,6 +92,10 @@ export class HomeworldApp {
   zoom(scale: number): void {
     const clamped = THREE.MathUtils.clamp(scale, ZOOM_CLAMP.min, ZOOM_CLAMP.max);
     this.rig.zoomByFactor(clamped);
+  }
+
+  recenter(): void {
+    this.rig.recenter();
   }
 
   private frame(): void {

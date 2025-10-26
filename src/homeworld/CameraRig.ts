@@ -4,13 +4,16 @@ const MIN_RADIUS = 2.5;
 const MAX_RADIUS = 20;
 const MIN_PHI = 0.1;
 const MAX_PHI = Math.PI - 0.1;
+const DEFAULT_RADIUS = 5.5;
+const DEFAULT_PHI = Math.PI / 2.4;
+const DEFAULT_THETA = Math.PI / 4;
 
 export class CameraRig {
   readonly camera: THREE.PerspectiveCamera;
   readonly target = new THREE.Vector3(0, 0, 0);
-  radius = 6;
-  phi = Math.PI / 3;
-  theta = Math.PI / 4;
+  radius = DEFAULT_RADIUS;
+  phi = DEFAULT_PHI;
+  theta = DEFAULT_THETA;
 
   constructor(width: number, height: number) {
     this.camera = new THREE.PerspectiveCamera(55, width / height, 0.01, 200);
@@ -41,5 +44,13 @@ export class CameraRig {
 
   zoomByFactor(factor: number): void {
     this.radius = THREE.MathUtils.clamp(this.radius * factor, MIN_RADIUS, MAX_RADIUS);
+  }
+
+  recenter(): void {
+    this.target.set(0, 0, 0);
+    this.radius = DEFAULT_RADIUS;
+    this.phi = DEFAULT_PHI;
+    this.theta = DEFAULT_THETA;
+    this.update();
   }
 }

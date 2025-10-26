@@ -1,4 +1,11 @@
-import React, { useCallback, useEffect, useMemo, useRef } from "react";
+import React, {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+} from "react";
 import { View, PixelRatio, LayoutChangeEvent, PanResponder } from "react-native";
 import { GLView } from "expo-gl";
 import type { ExpoWebGLRenderingContext } from "expo-gl";
@@ -8,6 +15,10 @@ import { HomeworldApp, HomeworldStats } from "../homeworld/HomeworldApp";
 
 export type HomeworldSceneProps = {
   onStats?: (stats: HomeworldStats) => void;
+};
+
+export type HomeworldSceneHandle = {
+  recenter: () => void;
 };
 
 type RendererBundle = {
@@ -26,7 +37,8 @@ function distance(touches: readonly { pageX: number; pageY: number }[]): number 
   return Math.sqrt(dx * dx + dy * dy);
 }
 
-export function HomeworldScene({ onStats }: HomeworldSceneProps) {
+export const HomeworldScene = forwardRef<HomeworldSceneHandle, HomeworldSceneProps>(
+  ({ onStats }, ref) => {
   const bundleRef = useRef<RendererBundle | null>(null);
   const lastPan = useRef({ x: 0, y: 0 });
   const pinchDistance = useRef<number | null>(null);
@@ -155,9 +167,25 @@ export function HomeworldScene({ onStats }: HomeworldSceneProps) {
     []
   );
 
+  useImperativeHandle(
+    ref,
+    () => ({
+      recenter: () => {
+        const bundle = bundleRef.current;
+        if (bundle) {
+          bundle.app.recenter();
+        }
+      },
+    }),
+    []
+  );
+
   return (
     <View style={{ flex: 1 }} onLayout={onLayout} {...panResponder.panHandlers}>
       <GLView style={{ flex: 1 }} onContextCreate={handleContextCreate} />
     </View>
   );
 }
+);
+
+HomeworldScene.displayName = "HomeworldScene";
