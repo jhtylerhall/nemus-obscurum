@@ -5,14 +5,15 @@ const MAX_RADIUS = 20;
 const MIN_PHI = 0.1;
 const MAX_PHI = Math.PI - 0.1;
 const DEFAULT_RADIUS = 5.5;
-const DEFAULT_PHI = Math.PI / 2.4;
-const DEFAULT_THETA = Math.PI / 4;
-const FOCUS_DISTANCE_MULTIPLIER = 2.2;
+const DEFAULT_PHI = Math.PI / 2.15;
+const DEFAULT_THETA = Math.PI / 2;
+const FIT_MARGIN = 1.08;
 
 export class CameraRig {
   readonly camera: THREE.PerspectiveCamera;
   readonly target = new THREE.Vector3(0, 0, 0);
   private defaultRadius = DEFAULT_RADIUS;
+  private lastFocusRadius = DEFAULT_RADIUS;
   radius = DEFAULT_RADIUS;
   phi = DEFAULT_PHI;
   theta = DEFAULT_THETA;
@@ -37,6 +38,9 @@ export class CameraRig {
   setSize(width: number, height: number): void {
     this.camera.aspect = width / Math.max(1, height);
     this.camera.updateProjectionMatrix();
+    this.defaultRadius = this.computeFocusDistance(this.lastFocusRadius);
+    this.radius = this.defaultRadius;
+    this.update();
   }
 
   adjustAngles(deltaTheta: number, deltaPhi: number): void {
@@ -60,15 +64,27 @@ export class CameraRig {
 
   focusOn(target: THREE.Vector3, radius: number): void {
     this.target.copy(target);
-    const desiredRadius = THREE.MathUtils.clamp(
-      radius * FOCUS_DISTANCE_MULTIPLIER,
-      MIN_RADIUS,
-      MAX_RADIUS
-    );
+    this.lastFocusRadius = radius;
+    const desiredRadius = this.computeFocusDistance(radius);
     this.defaultRadius = desiredRadius;
     this.radius = desiredRadius;
     this.phi = DEFAULT_PHI;
     this.theta = DEFAULT_THETA;
     this.update();
+  }
+
+  private computeFocusDistance(targetRadius: number): number {
+    const halfVerticalFov = THREE.MathUtils.degToRad(this.camera.fov * 0.5);
+    const verticalDistance = targetRadius / Math.tan(halfVerticalFov);
+    const halfHorizontalFov = Math.atan(
+      Math.tan(halfVerticalFov) * this.camera.aspect
+    );
+    const horizontalDistance = targetRadius / Math.tan(halfHorizontalFov);
+    const fitDistance = Math.max(verticalDistance, horizontalDistance);
+    return THREE.MathUtils.clamp(
+      fitDistance * FIT_MARGIN,
+      MIN_RADIUS,
+      MAX_RADIUS
+    );
   }
 }
