@@ -32,11 +32,12 @@ export class HomeworldApp {
   private readonly atmosphere = new Atmosphere(this.planet.mesh);
   private readonly star = new Star();
   private readonly orbits = new OrbitLines();
-  private readonly starDir = new THREE.Vector3(-1, 0, 0).normalize();
+  private readonly starDir = new THREE.Vector3();
   private accumulator = 0;
   private readonly civ: CivState = createInitialCivState();
   private readonly statsScratch: HomeworldStats = { ...createInitialCivState() };
   private pixelRatio: number;
+  private readonly focusTarget = new THREE.Vector3();
 
   private running = false;
   private readonly endFrame: () => void;
@@ -49,7 +50,7 @@ export class HomeworldApp {
     this.renderer.setSize(opts.width, opts.height, false);
 
     this.rig = new CameraRig(opts.width, opts.height);
-    this.rig.recenter();
+    this.focusOnPlanet();
     this.scene.background = new THREE.Color("#02040f");
     this.scene.add(makeAmbientLight());
     const sunLight = makeStarLight();
@@ -60,6 +61,10 @@ export class HomeworldApp {
     this.scene.add(this.star.mesh);
     this.scene.add(this.orbits.group);
 
+    this.starDir
+      .copy(this.star.mesh.position)
+      .normalize()
+      .multiplyScalar(-1);
     this.planet.setStarDirection(this.starDir);
 
     this.endFrame = opts.endFrame;
@@ -95,7 +100,7 @@ export class HomeworldApp {
   }
 
   recenter(): void {
-    this.rig.recenter();
+    this.focusOnPlanet();
   }
 
   private frame(): void {
@@ -126,5 +131,21 @@ export class HomeworldApp {
       this.statsScratch.revealed = this.civ.revealed;
       this.onStats(this.statsScratch);
     }
+  }
+
+  private focusOnPlanet(): void {
+    this.planet.mesh.getWorldPosition(this.focusTarget);
+    const radius = this.computePlanetRadius();
+    this.rig.focusOn(this.focusTarget, radius);
+  }
+
+  private computePlanetRadius(): number {
+    const geometry = this.planet.mesh.geometry;
+    if (!geometry.boundingSphere) {
+      geometry.computeBoundingSphere();
+    }
+    const baseRadius = geometry.boundingSphere?.radius ?? 1;
+    const scale = this.planet.mesh.scale.x;
+    return baseRadius * scale;
   }
 }

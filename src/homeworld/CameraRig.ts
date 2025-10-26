@@ -7,10 +7,12 @@ const MAX_PHI = Math.PI - 0.1;
 const DEFAULT_RADIUS = 5.5;
 const DEFAULT_PHI = Math.PI / 2.4;
 const DEFAULT_THETA = Math.PI / 4;
+const FOCUS_DISTANCE_MULTIPLIER = 2.2;
 
 export class CameraRig {
   readonly camera: THREE.PerspectiveCamera;
   readonly target = new THREE.Vector3(0, 0, 0);
+  private defaultRadius = DEFAULT_RADIUS;
   radius = DEFAULT_RADIUS;
   phi = DEFAULT_PHI;
   theta = DEFAULT_THETA;
@@ -38,7 +40,10 @@ export class CameraRig {
   }
 
   adjustAngles(deltaTheta: number, deltaPhi: number): void {
-    this.theta += deltaTheta;
+    this.theta = THREE.MathUtils.euclideanModulo(
+      this.theta + deltaTheta,
+      Math.PI * 2
+    );
     this.phi = THREE.MathUtils.clamp(this.phi + deltaPhi, MIN_PHI, MAX_PHI);
   }
 
@@ -47,8 +52,21 @@ export class CameraRig {
   }
 
   recenter(): void {
-    this.target.set(0, 0, 0);
-    this.radius = DEFAULT_RADIUS;
+    this.radius = this.defaultRadius;
+    this.phi = DEFAULT_PHI;
+    this.theta = DEFAULT_THETA;
+    this.update();
+  }
+
+  focusOn(target: THREE.Vector3, radius: number): void {
+    this.target.copy(target);
+    const desiredRadius = THREE.MathUtils.clamp(
+      radius * FOCUS_DISTANCE_MULTIPLIER,
+      MIN_RADIUS,
+      MAX_RADIUS
+    );
+    this.defaultRadius = desiredRadius;
+    this.radius = desiredRadius;
     this.phi = DEFAULT_PHI;
     this.theta = DEFAULT_THETA;
     this.update();
