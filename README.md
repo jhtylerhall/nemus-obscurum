@@ -1,8 +1,13 @@
-# Dark Forest Homeworld
+# Nemus Obscurum – Homeworld
 
-A Vite + TypeScript playground for building out the "Dark Forest" homeworld simulation. The runtime renders a planet, star and o
-rbits in Three.js while a lightweight civ simulation drives the visuals. An optional CPU ray tracer can output offline frames fo
-r testing materials and lighting.
+An Expo + React Native experience that renders a Dark Forest homeworld in real time using `expo-gl` and `three.js`. The scene showcases a planet with custom shaders, atmosphere halo, orbital guides, and a living civilization whose stats drive the visuals.
+
+## Features
+
+- Dedicated homeworld renderer with planet, star, atmosphere, and orbit lines.
+- Civ simulation ticking at 60 Hz with energy, secrecy, and morale feedback.
+- HUD overlay summarizing population, tech level, secrecy, energy usage, and morale.
+- Expo-friendly Three.js integration that works on iOS and Android via `expo-gl`.
 
 ## Getting Started
 
@@ -10,6 +15,8 @@ r testing materials and lighting.
 
 - [Node.js](https://nodejs.org/) 18+
 - npm
+- Expo CLI (`npm install -g expo-cli`) or `npx expo`
+- Expo Go or a custom dev client on iOS/Android (Web is not supported because of `expo-gl`).
 
 ### Installation
 
@@ -17,60 +24,40 @@ r testing materials and lighting.
 npm install
 ```
 
-### Development Server
+### Running
 
-```bash
-npm run dev
-```
+Launch the app with Expo:
 
-This launches Vite with hot module reloading at `http://localhost:5173` and opens a browser window automatically.
+- **iOS simulator:**
+  ```bash
+  npm run ios
+  ```
+- **Android emulator:**
+  ```bash
+  npm run android
+  ```
+- **Generic start:**
+  ```bash
+  npm start
+  ```
+  This opens Expo Dev Tools so you can choose a platform.
 
-### Production Build
+### Controls
 
-```bash
-npm run build
-npm run preview
-```
-
-### Offline Ray Trace
-
-```bash
-npm run rt:frame
-```
-
-This renders a simple PNG into `public/frame.png` using the CPU ray tracer prototype.
+- Drag to orbit around the homeworld.
+- Pinch to adjust the camera radius.
+- The HUD updates automatically as the civilization evolves.
 
 ## Project Structure
 
-```
-src/
-  main.ts                # Bootstraps the App orchestrator
-  core/                  # Renderer, camera rig, lighting, timekeeping
-  render/                # Scene primitives, materials and shaders
-  sim/                   # Civ state update loops and procedural opponents
-  spatial/               # Octree + BVH spatial acceleration stubs
-  ui/                    # Heads-up display and control panels
-  save/                  # Snapshot persistence helpers
-  rt/                    # Offline ray tracer implementation
-public/
-  ui/                    # Icons and cursor assets (placeholders)
-```
+- `src/App.tsx` – Root component that hosts the GL scene and overlays.
+- `src/components/HomeworldScene.tsx` – Bridges Expo GL contexts into Three.js.
+- `src/homeworld/*` – Rendering primitives (planet, atmosphere, star, orbits) and civ simulation.
 
-## Tech Stack
+## Scripts
 
-- [Three.js](https://threejs.org/) for real-time rendering
-- [Zustand](https://github.com/pmndrs/zustand) placeholder for future state management
-- [Vite](https://vitejs.dev/) for bundling and dev server
-- TypeScript throughout the codebase
-
-## Milestones
-
-1. **First light** – orbit camera, planet sphere, directional light.
-2. **Atmosphere** – halo mesh, moon + orbit trails.
-3. **Civ growth** – simulation feeds city light intensity.
-4. **Aid/Strike UI** – action buttons that trigger sim events.
-5. **Spatial structures** – octree + BVH for culling and ray tracing.
-6. **Offline ray tracing** – CPU renderer outputting PNG frames.
+- `npm run ios` / `npm run android` – launch the app on iOS/Android.
+- `npm test` – run TypeScript type checks.
 
 ## License
 

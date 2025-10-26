@@ -1,0 +1,159 @@
+import React, { useCallback, useEffect, useMemo, useRef } from "react";
+import { View, PixelRatio, LayoutChangeEvent, PanResponder } from "react-native";
+import { GLView } from "expo-gl";
+import type { ExpoWebGLRenderingContext } from "expo-gl";
+import * as THREE from "three";
+
+import { HomeworldApp, HomeworldStats } from "../homeworld/HomeworldApp";
+
+export type HomeworldSceneProps = {
+  onStats?: (stats: HomeworldStats) => void;
+};
+
+type RendererBundle = {
+  gl: ExpoWebGLRenderingContext;
+  renderer: THREE.WebGLRenderer;
+  app: HomeworldApp;
+};
+
+function distance(touches: readonly { pageX: number; pageY: number }[]): number {
+  if (touches.length < 2) {
+    return 0;
+  }
+  const [a, b] = touches;
+  const dx = a.pageX - b.pageX;
+  const dy = a.pageY - b.pageY;
+  return Math.sqrt(dx * dx + dy * dy);
+}
+
+export function HomeworldScene({ onStats }: HomeworldSceneProps) {
+  const bundleRef = useRef<RendererBundle | null>(null);
+  const lastPan = useRef({ x: 0, y: 0 });
+  const pinchDistance = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      const bundle = bundleRef.current;
+      if (bundle) {
+        bundle.app.stop();
+        bundle.renderer.dispose();
+        bundle.gl.endFrameEXP();
+        bundleRef.current = null;
+      }
+    };
+  }, []);
+
+  const onLayout = useCallback((event: LayoutChangeEvent) => {
+    const { width, height } = event.nativeEvent.layout;
+    const bundle = bundleRef.current;
+    if (bundle) {
+      const pixelRatio = PixelRatio.get();
+      bundle.app.resize(width * pixelRatio, height * pixelRatio, pixelRatio);
+    }
+  }, []);
+
+  const handleContextCreate = useCallback(
+    async (gl: ExpoWebGLRenderingContext) => {
+      const pixelRatio = PixelRatio.get();
+      const { drawingBufferWidth, drawingBufferHeight } = gl;
+      const canvas = Object.assign(gl.canvas ?? {}, {
+        width: drawingBufferWidth,
+        height: drawingBufferHeight,
+        style: {},
+        clientHeight: drawingBufferHeight,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        getContext: (type: string) => (type.includes("webgl") ? gl : null),
+      });
+      (gl as any).canvas = canvas;
+      if (!(gl as any).getContextAttributes) {
+        (gl as any).getContextAttributes = () => ({
+          alpha: true,
+          depth: true,
+          stencil: false,
+          antialias: true,
+          premultipliedAlpha: false,
+          preserveDrawingBuffer: false,
+          powerPreference: "high-performance",
+          failIfMajorPerformanceCaveat: false,
+          xrCompatible: false,
+        });
+      }
+
+      const renderer = new THREE.WebGLRenderer({
+        context: gl as unknown as WebGLRenderingContext,
+        canvas: canvas as any,
+        antialias: true,
+        alpha: true,
+        premultipliedAlpha: false,
+        preserveDrawingBuffer: false,
+        powerPreference: "high-performance",
+      });
+      renderer.setPixelRatio(pixelRatio);
+      renderer.setClearColor("#02040f");
+
+      const app = new HomeworldApp(renderer, {
+        width: drawingBufferWidth,
+        height: drawingBufferHeight,
+        pixelRatio,
+        endFrame: () => gl.endFrameEXP(),
+        onStats,
+      });
+      app.start();
+
+      bundleRef.current = { gl, renderer, app };
+    },
+    [onStats]
+  );
+
+  const panResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => true,
+        onMoveShouldSetPanResponder: () => true,
+        onPanResponderGrant: (evt) => {
+          lastPan.current = { x: 0, y: 0 };
+          pinchDistance.current = evt.nativeEvent.touches.length >= 2
+            ? distance(evt.nativeEvent.touches)
+            : null;
+        },
+        onPanResponderMove: (evt, gestureState) => {
+          const bundle = bundleRef.current;
+          if (!bundle) {
+            return;
+          }
+          const touches = evt.nativeEvent.touches;
+          if (touches.length >= 2) {
+            const prev = pinchDistance.current;
+            const dist = distance(touches);
+            if (prev && dist > 0) {
+              const scale = dist / prev;
+              bundle.app.zoom(scale);
+            }
+            pinchDistance.current = dist;
+          } else {
+            const dx = gestureState.dx - lastPan.current.x;
+            const dy = gestureState.dy - lastPan.current.y;
+            lastPan.current = { x: gestureState.dx, y: gestureState.dy };
+            bundle.app.orbit(dx, dy);
+          }
+        },
+        onPanResponderRelease: () => {
+          lastPan.current = { x: 0, y: 0 };
+          pinchDistance.current = null;
+        },
+        onPanResponderTerminationRequest: () => true,
+        onPanResponderTerminate: () => {
+          lastPan.current = { x: 0, y: 0 };
+          pinchDistance.current = null;
+        },
+      }),
+    []
+  );
+
+  return (
+    <View style={{ flex: 1 }} onLayout={onLayout} {...panResponder.panHandlers}>
+      <GLView style={{ flex: 1 }} onContextCreate={handleContextCreate} />
+    </View>
+  );
+}

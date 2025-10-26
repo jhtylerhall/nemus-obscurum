@@ -1,157 +1,86 @@
-# AGENTS HANDBOOK — `dark-forest-homeworld`
+# AGENTS HANDBOOK — `nemus-obscurum`
 
 **Mission**
-Build a desktop-class Dark Forest "homeworld" viewer with a Vite + TypeScript runtime, real-time Three.js scenegraph, and a lig
-htweight civ simulation that can also be ray-traced offline.
-
-This handbook documents what the repo does today, what must stay stable, and how to extend it without breaking the render loop.
+Build an Expo + React Native experience that renders a Dark Forest homeworld in real time. The runtime uses `expo-gl` + Three.js, simulates a single civilization, and exposes lightweight HUD overlays describing the homeworld.
 
 ---
 
-## 1) Tech Stack & Versions
+## 1) Runtime & Tooling
 
-- **Runtime**: Vite 5, TypeScript 5.6, vanilla DOM.
-- **Rendering**: Three.js r169 (`WebGLRenderer`, custom shaders for planet/atmosphere).
-- **State**: Local class composition today; [Zustand](https://github.com/pmndrs/zustand) reserved for future overlays.
-- **Offline rendering**: CPU ray tracer invoked via `npm run rt:frame` (powered by `tsx`).
-
-> **Build targets**
-> - Strict TypeScript everywhere. Keep modules ESM-friendly (`type: module`).
-> - Shaders live in `src/render/shaders/*.glsl` and are imported with `?raw`.
-> - No React Native or Expo artifacts remain—assume a standard browser DOM.
+- **Platform**: Expo SDK 54 (React Native 0.81) targeting iOS/Android handhelds.
+- **Rendering**: `expo-gl` surface bridged into `three.js@0.166` via a custom `HomeworldScene` component.
+- **Language**: TypeScript everywhere (`strict: true`). The repo is CommonJS at the package level because Expo metro owns bundling.
+- **Build/Test**:
+  ```bash
+  npm install
+  npm run ios   # or npm run android / npm start
+  npm run typecheck
+  ```
+- `npm test` is aliased to TypeScript type checking; keep the command green.
 
 ---
 
-## 2) Repository Layout
+## 2) Source Layout
 
 ```
 src/
-  main.ts                  # Bootstraps App orchestrator
-  core/                    # Renderer, camera rig, timekeeper, lighting helpers
-  render/                  # Scene primitives (planet, atmosphere, star, orbit lines)
-  sim/                     # Civ state, updates, events, procedural opponents
-  spatial/                 # Octree & BVH stubs for culling / ray tracing
-  ui/                      # DOM overlays (HUD, action panels)
-  save/                    # Snapshot schema + persistence helpers
-  rt/                      # Offline ray tracer (RayTracer, Integrators, CLI)
-public/
-  ui/                      # Icons / cursor placeholders (empty today)
+  App.tsx                   # Root component – mounts GL scene + HUD overlay
+  components/
+    HomeworldScene.tsx      # Expo GLView -> Three.js bridge (renderer lifecycle)
+  homeworld/
+    HomeworldApp.ts         # Orchestrates renderer, civ simulation, frame loop
+    CameraRig.ts            # Orbit camera math (radius, phi/theta)
+    Planet.ts               # Custom shader planet mesh
+    Atmosphere.ts           # Additive halo around the planet
+    Star.ts                 # Pulsing emissive star
+    OrbitLines.ts           # Dashed orbital guides
+    Lighting.ts             # Lights shared by renderer + star direction
+    Simulation.ts           # Civ state + fixed-step update logic
+    shaders.ts              # GLSL strings embedded for RN bundler
 ```
 
-Keep new systems inside those folders; add deeper `AGENTS.md` files if you introduce larger subsystems.
+Do not reintroduce the previous Redux-based starfield systems unless the product requirements change. Keep the homeworld runtime compact and allocation-free in the animation loop.
 
 ---
 
-## 3) Core Runtime Contracts
+## 3) Rendering Contracts
 
-`core/App.ts` is the orchestrator. It owns:
-- `Three.WebGLRenderer` configured with ACES tone mapping + SRGB output.
-- `CameraRig` – orbit camera around the planet.
-- `Time` – fixed timestep accumulator (1/60s) with frame clamping.
-- `Planet`, `Atmosphere`, `Star`, `OrbitLines` – scene primitives.
-- Civ simulation state (see `sim/CivUpdate.ts`).
-- Overlay UI (`HUD`, `Panels`).
-
-When modifying the render loop, keep these guarantees:
-1. **Zero allocations inside `frame()`** except for unavoidable scalars. Reuse vectors if you add math helpers.
-2. Call `renderer.render(scene, camera)` once per frame.
-3. Only resize the renderer inside `onResize()`.
-4. Update UI overlays from existing civ state; do not create DOM elements every frame.
+- `HomeworldApp.frame()` is called from `WebGLRenderer.setAnimationLoop`. **No allocations** inside the loop aside from scalars.
+- Always call `gl.endFrameEXP()` via the `endFrame` callback after rendering so Expo flushes the GL buffer.
+- Update renderer size only through `HomeworldApp.resize()`; the Expo `GLView` hands you layout width/height in logical pixels—multiply by `PixelRatio.get()` before passing to the renderer.
+- When editing shaders:
+  - Keep them in `homeworld/shaders.ts` as string literals (Metro lacks `?raw`).
+  - Maintain `precision highp float;` headers and two-space indent.
 
 ---
 
 ## 4) Simulation Hooks
 
-`sim/CivUpdate.ts` exposes:
-- `createInitialCivState()` → returns the baseline civ stats.
-- `stepCiv(civ, dt)` → mutate-in-place growth, energy usage, secrecy, etc.
-
-Other modules:
-- `sim/Events.ts` – resolve aid/strike effects.
-- `sim/RemoteCivs.ts` – deterministic procedural civs (Mulberry32 PRNG).
-- `sim/Orbits.ts` – helper for orbital motion state.
-
-Keep these mutations cheap; render loop may call them 60× per second.
+- Civ model lives in `homeworld/Simulation.ts` and is intentionally tiny: growth, energy usage, secrecy, morale, reveal state.
+- The fixed-step accumulator in `HomeworldApp` ticks at `1/60s`. Clamp accumulated time to `0.2s` to avoid spiral of death.
+- Updating the civ should also update visuals:
+  - `Planet.updateSurfaceEnergy()` tweaks day/night colors.
+  - `Atmosphere.updateGlow()` brightens based on secrecy loss.
+  - `Star.updatePulse()` oscillates emissive strength for ambiance.
 
 ---
 
-## 5) Rendering Assets
+## 5) UI Layer
 
-- Planet shader uniforms: `uCamPos`, `uStarDir`, `uDayColor`, `uNightEmit`, `uSpecPower`, `uSpecStrength`, `uAlbedo`, `uCityMask`.
-- Atmosphere shader: simple additive halo; adjust intensity via `updateGlow()`.
-- `render/Planet.ts` uses small baked `DataTexture`s—swap them for real textures once assets exist.
-- Orbit lines rely on dashed `Line` geometry (`computeLineDistances()` required after vertex changes).
-
-When you extend materials:
-- Create uniforms once in the constructor.
-- Update `ShaderMaterial.needsUpdate` sparingly; prefer updating uniform values directly.
+- The HUD lives inside `src/App.tsx`. Keep overlays lightweight: static `View` + `Text` with `pointerEvents="none"` on the container so GL interactions keep flowing.
+- Prefer `Intl.NumberFormat` for user-facing numbers instead of manual rounding.
 
 ---
 
-## 6) UI Layer
+## 6) Performance Checklist
 
-`ui/HUD.ts` and `ui/Panels.tsx` render DOM overlays appended after the canvas. Rules:
-- The top-level UI container has `pointer-events: none`; enable interaction by setting `pointer-events: auto` on interactive nodes.
-- Avoid reflow churn—cache DOM nodes and only update `textContent`/`innerHTML` for changed data.
-- Keep styles inline or colocated (no CSS framework yet).
-
----
-
-## 7) Offline Ray Tracer
-
-- Entry point: `src/rt/cli.ts` (executed via `npm run rt:frame`). Uses `tsx` so extension specifiers may end in `.js`.
-- `RayTracer` + `Integrators` implement Blinn-Phong shading for spheres.
-- `Accel.ts` currently returns all spheres (placeholder). Expand with BVH traversal when needed.
-- Output PNG is written to `public/frame.png`; delete or gitignore if you do not want binaries committed.
-
-When expanding the ray tracer, favour pure functions and typed vectors (`THREE.Vector3`).
+Before committing changes that touch rendering or simulation:
+1. `npm run typecheck`
+2. Launch the app on at least one platform (Expo Go or simulator) and verify:
+   - Planet, atmosphere, star, and orbit lines render without artifacts.
+   - Civ stats update smoothly; no dropped frames or hitching.
+   - PanResponder-based pinch + drag gestures still orbit/zoom the camera.
 
 ---
 
-## 8) Tooling & Commands
-
-```bash
-npm install        # install deps
-npm run dev        # Vite dev server (opens browser)
-npm run build      # Production bundle (Rollup)
-npm run preview    # Preview the built bundle
-npm run rt:frame   # CPU ray tracer demo (writes public/frame.png)
-```
-
-CI expectations:
-- `npm run build` must succeed without type errors.
-- `npm run rt:frame` must finish without throwing.
-
----
-
-## 9) Coding Conventions
-
-- TypeScript strict mode; export explicit types from modules that form a public API.
-- Use modern ES syntax (class fields, const/let). No CommonJS requires.
-- Prefer composition over singletons—pass dependencies via constructors when adding systems.
-- Shader files should keep consistent formatting (two spaces indent, `precision highp float;` header).
-- Commit messages: `feat:` (features), `fix:`, `perf:`, `chore:`, `docs:`.
-
----
-
-## 10) Performance & Quality Checklist
-
-Before shipping changes that touch rendering or simulation:
-1. **Build** (`npm run build`) – ensures TS + bundler success.
-2. **Ray trace** (`npm run rt:frame`) if you changed `src/rt/*`.
-3. Verify the orbit camera still frames the planet and renderer resizes with the window.
-4. Ensure `App.frame()` remains allocation-free.
-5. Keep overlay updates lightweight (string updates only).
-
----
-
-## 11) Glossary
-
-- **Civ** – a civilization unit tracked by the simulation.
-- **IBL** – image-based lighting, loaded via `core/loaders/HDRLoader.ts` (future work).
-- **Draw range** – geometry budget set via `BufferGeometry.setDrawRange` (not yet used but plan for instanced buffers).
-- **Mulberry32** – deterministic PRNG used for procedural civs.
-
----
-
-Keep this handbook synchronized with architecture changes so future agents know the current rules.
+Keep this handbook aligned with the current homeworld implementation so future agents maintain the same contracts.

@@ -1,6 +1,5 @@
-import * as THREE from 'three';
-import atmosphereVertex from './shaders/atmosphere.vert.glsl?raw';
-import atmosphereFragment from './shaders/atmosphere.frag.glsl?raw';
+import * as THREE from "three";
+import { atmosphereVertexShader, atmosphereFragmentShader } from "./shaders";
 
 export class Atmosphere {
   readonly mesh: THREE.Mesh<THREE.SphereGeometry, THREE.ShaderMaterial>;
@@ -8,15 +7,15 @@ export class Atmosphere {
 
   constructor(planet: THREE.Mesh) {
     this.uniforms = {
-      uColor: new THREE.Uniform(new THREE.Color('#7fb9ff')),
+      uColor: new THREE.Uniform(new THREE.Color("#7fb9ff")),
       uIntensity: new THREE.Uniform(0.4),
     } satisfies Record<string, THREE.Uniform>;
 
     const geometry = new THREE.SphereGeometry(1.05, 64, 64);
     const material = new THREE.ShaderMaterial({
       uniforms: this.uniforms,
-      vertexShader: atmosphereVertex,
-      fragmentShader: atmosphereFragment,
+      vertexShader: atmosphereVertexShader,
+      fragmentShader: atmosphereFragmentShader,
       blending: THREE.AdditiveBlending,
       transparent: true,
       depthWrite: false,

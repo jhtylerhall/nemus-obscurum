@@ -1,4 +1,4 @@
-import * as THREE from 'three';
+import * as THREE from "three";
 
 export class OrbitLines {
   readonly group: THREE.Group;
@@ -17,7 +17,11 @@ export class OrbitLines {
       points.push(new THREE.Vector3(Math.cos(angle) * radius, 0, Math.sin(angle) * radius));
     }
     const geometry = new THREE.BufferGeometry().setFromPoints(points);
-    const material = new THREE.LineDashedMaterial({ color: 0x5b7c99, dashSize: 5e7, gapSize: 2e7 });
+    const material = new THREE.LineDashedMaterial({
+      color: 0x5b7c99,
+      dashSize: 5e7,
+      gapSize: 2e7,
+    });
     const line = new THREE.Line(geometry, material);
     line.computeLineDistances();
     return line;
