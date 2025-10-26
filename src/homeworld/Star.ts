@@ -8,8 +8,8 @@ export class Star {
     const geometry = new THREE.SphereGeometry(1, 32, 32);
     const material = new THREE.MeshBasicMaterial({ color: this.baseColor });
     this.mesh = new THREE.Mesh(geometry, material);
-    this.mesh.scale.setScalar(6.96e8);
-    this.mesh.position.set(1.5e9, 0, 0);
+    this.mesh.scale.setScalar(1.8);
+    this.mesh.position.set(18, 0, 0);
   }
 
   updatePulse(time: number): void {

@@ -5,8 +5,8 @@ export class OrbitLines {
 
   constructor() {
     this.group = new THREE.Group();
-    this.group.add(this.makeOrbit(1.5e9));
-    this.group.add(this.makeOrbit(3.5e8));
+    this.group.add(this.makeOrbit(12));
+    this.group.add(this.makeOrbit(6));
   }
 
   private makeOrbit(radius: number): THREE.Line {
@@ -19,8 +19,8 @@ export class OrbitLines {
     const geometry = new THREE.BufferGeometry().setFromPoints(points);
     const material = new THREE.LineDashedMaterial({
       color: 0x5b7c99,
-      dashSize: 5e7,
-      gapSize: 2e7,
+      dashSize: 0.6,
+      gapSize: 0.3,
     });
     const line = new THREE.Line(geometry, material);
     line.computeLineDistances();

@@ -11,9 +11,12 @@ function makeTexture(color: THREE.ColorRepresentation): THREE.DataTexture {
     data[i + 1] = Math.floor(colorObj.g * 255);
     data[i + 2] = Math.floor(colorObj.b * 255);
   }
-  const texture = new THREE.DataTexture(data, width, height);
+  const texture = new THREE.DataTexture(data, width, height, THREE.RGBFormat);
   texture.needsUpdate = true;
   texture.colorSpace = THREE.SRGBColorSpace;
+  texture.magFilter = THREE.LinearFilter;
+  texture.minFilter = THREE.LinearFilter;
+  texture.generateMipmaps = false;
   return texture;
 }
 
@@ -28,6 +31,8 @@ function makeCityMask(): THREE.DataTexture {
   }
   const texture = new THREE.DataTexture(data, size, size, THREE.RedFormat);
   texture.needsUpdate = true;
+  texture.magFilter = THREE.LinearFilter;
+  texture.minFilter = THREE.LinearFilter;
   return texture;
 }
 
@@ -56,7 +61,7 @@ export class Planet {
     });
 
     this.mesh = new THREE.Mesh(geometry, material);
-    this.mesh.scale.setScalar(6.37e6);
+    this.mesh.scale.setScalar(2.8);
     this.mesh.onBeforeRender = (_renderer, _scene, camera) => {
       (this.uniforms.uCamPos.value as THREE.Vector3).copy(
         (camera as THREE.PerspectiveCamera).position

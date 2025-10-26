@@ -91,6 +91,10 @@ export function HomeworldScene({ onStats }: HomeworldSceneProps) {
       });
       renderer.setPixelRatio(pixelRatio);
       renderer.setClearColor("#02040f");
+      renderer.setClearAlpha(1);
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.1;
 
       const app = new HomeworldApp(renderer, {
         width: drawingBufferWidth,

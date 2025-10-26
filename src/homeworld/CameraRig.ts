@@ -1,19 +1,19 @@
 import * as THREE from "three";
 
-const MIN_RADIUS = 1.2e7;
-const MAX_RADIUS = 3e8;
+const MIN_RADIUS = 2.5;
+const MAX_RADIUS = 20;
 const MIN_PHI = 0.1;
 const MAX_PHI = Math.PI - 0.1;
 
 export class CameraRig {
   readonly camera: THREE.PerspectiveCamera;
   readonly target = new THREE.Vector3(0, 0, 0);
-  radius = 4e7;
+  radius = 6;
   phi = Math.PI / 3;
   theta = Math.PI / 4;
 
   constructor(width: number, height: number) {
-    this.camera = new THREE.PerspectiveCamera(55, width / height, 0.1, 1e9);
+    this.camera = new THREE.PerspectiveCamera(55, width / height, 0.01, 200);
     this.update();
   }
 
