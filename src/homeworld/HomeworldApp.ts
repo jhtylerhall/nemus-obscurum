@@ -1,17 +1,12 @@
 import * as THREE from "three";
 import { Atmosphere } from "./Atmosphere";
 import { CameraRig } from "./CameraRig";
-import { OrbitLines } from "./OrbitLines";
 import { Planet } from "./Planet";
-import { Star } from "./Star";
 import { makeAmbientLight, makeStarLight } from "./Lighting";
 import { CivState, createInitialCivState, stepCiv } from "./Simulation";
 
 const FIXED_STEP = 1 / 60;
 const MAX_ACCUM = 0.2;
-const ORBIT_SPEED = 0.0025;
-const PITCH_SPEED = 0.002;
-const ZOOM_CLAMP = { min: 0.6, max: 1.6 } as const;
 
 export type HomeworldStats = CivState;
 
@@ -30,9 +25,6 @@ export class HomeworldApp {
   private readonly clock = new THREE.Clock();
   private readonly planet = new Planet();
   private readonly atmosphere = new Atmosphere(this.planet.mesh);
-  private readonly star = new Star();
-  private readonly orbits = new OrbitLines();
-  private readonly starDir = new THREE.Vector3();
   private accumulator = 0;
   private readonly civ: CivState = createInitialCivState();
   private readonly statsScratch: HomeworldStats = { ...createInitialCivState() };
@@ -54,18 +46,12 @@ export class HomeworldApp {
     this.scene.background = new THREE.Color("#02040f");
     this.scene.add(makeAmbientLight());
     const sunLight = makeStarLight();
-    sunLight.position.copy(this.star.mesh.position).normalize();
+    sunLight.position.set(8, 6, 4);
+    sunLight.target.position.set(0, 0, 0);
     this.scene.add(sunLight);
+    this.scene.add(sunLight.target);
     this.scene.add(this.planet.mesh);
     this.scene.add(this.atmosphere.mesh);
-    this.scene.add(this.star.mesh);
-    this.scene.add(this.orbits.group);
-
-    this.starDir
-      .copy(this.star.mesh.position)
-      .normalize()
-      .multiplyScalar(-1);
-    this.planet.setStarDirection(this.starDir);
 
     this.endFrame = opts.endFrame;
     this.onStats = opts.onStats;
@@ -90,15 +76,6 @@ export class HomeworldApp {
     this.rig.setSize(width, height);
   }
 
-  orbit(deltaX: number, deltaY: number): void {
-    this.rig.adjustAngles(-deltaX * ORBIT_SPEED, -deltaY * PITCH_SPEED);
-  }
-
-  zoom(scale: number): void {
-    const clamped = THREE.MathUtils.clamp(scale, ZOOM_CLAMP.min, ZOOM_CLAMP.max);
-    this.rig.zoomByFactor(clamped);
-  }
-
   recenter(): void {
     this.focusOnPlanet();
   }
@@ -116,7 +93,6 @@ export class HomeworldApp {
 
     this.planet.updateSurfaceEnergy(this.civ.energyUse);
     this.atmosphere.updateGlow(this.civ.secrecy);
-    this.star.updatePulse(this.clock.elapsedTime);
     this.rig.update();
 
     this.renderer.render(this.scene, this.rig.camera);
