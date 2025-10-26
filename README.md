@@ -1,14 +1,8 @@
-# Nemus Obscurum
+# Dark Forest Homeworld
 
-A real-time, Dark Forest-inspired simulation built with [Expo](https://expo.dev/) and React Native. The app renders a procedural starfield and evolving civilisations using `expo-gl` and `three.js`.
-
-## Features
-
-- WebGL rendering via `expo-gl` with a Three.js scene.
-- Simulation engine driving procedurally generated stars and civs.
-- Points-of-interest shortcuts to jump to home, strongest, frontier, densest, nearest or random systems.
-- Heads-up display showing reveals, kills and current FPS.
-- Pause/resume and reset controls.
+A Vite + TypeScript playground for building out the "Dark Forest" homeworld simulation. The runtime renders a planet, star and o
+rbits in Three.js while a lightweight civ simulation drives the visuals. An optional CPU ray tracer can output offline frames fo
+r testing materials and lighting.
 
 ## Getting Started
 
@@ -16,8 +10,6 @@ A real-time, Dark Forest-inspired simulation built with [Expo](https://expo.dev/
 
 - [Node.js](https://nodejs.org/) 18+
 - npm
-- Expo CLI (`npm install -g expo-cli`) or use `npx expo`
-- Expo Go or a custom dev client on your iOS/Android device. Web is **not** supported because of `expo-gl`.
 
 ### Installation
 
@@ -25,47 +17,60 @@ A real-time, Dark Forest-inspired simulation built with [Expo](https://expo.dev/
 npm install
 ```
 
-### Running
+### Development Server
 
-Launch the app with Expo:
+```bash
+npm run dev
+```
 
-- **iOS simulator:**
-  ```bash
-  npm run ios
-  ```
-- **Android emulator:**
-  ```bash
-  npm run android
-  ```
-- **Generic start:**
-  ```bash
-  npm start
-  ```
-  This opens Expo Dev Tools so you can choose a platform.
+This launches Vite with hot module reloading at `http://localhost:5173` and opens a browser window automatically.
 
-Use pinch gestures to zoom and drag to orbit the camera. The POI bar lets you quickly focus on interesting regions.
+### Production Build
 
-## Performance Tuning
+```bash
+npm run build
+npm run preview
+```
 
-If your device struggles to keep up, lower the defaults in `src/features/params/paramsSlice.ts`:
+### Offline Ray Trace
 
-- `maxStars` (e.g. `80_000`)
-- `maxCivs` (e.g. `10_000`)
+```bash
+npm run rt:frame
+```
 
-Restart the app after adjusting these values.
+This renders a simple PNG into `public/frame.png` using the CPU ray tracer prototype.
 
 ## Project Structure
 
-- `src/gl` – WebGL scene and rendering helpers.
-- `src/sim` – Simulation engine and types.
-- `src/features` – Redux slices for parameters and simulation stats.
-- `src/ui` – UI components such as the POI bar.
-- `src/state` – Redux store configuration and hooks.
+```
+src/
+  main.ts                # Bootstraps the App orchestrator
+  core/                  # Renderer, camera rig, lighting, timekeeping
+  render/                # Scene primitives, materials and shaders
+  sim/                   # Civ state update loops and procedural opponents
+  spatial/               # Octree + BVH spatial acceleration stubs
+  ui/                    # Heads-up display and control panels
+  save/                  # Snapshot persistence helpers
+  rt/                    # Offline ray tracer implementation
+public/
+  ui/                    # Icons and cursor assets (placeholders)
+```
 
-## Scripts
+## Tech Stack
 
-- `npm run ios` / `npm run android` – launch the app on iOS/Android.
-- `npm test` – run TypeScript type checks.
+- [Three.js](https://threejs.org/) for real-time rendering
+- [Zustand](https://github.com/pmndrs/zustand) placeholder for future state management
+- [Vite](https://vitejs.dev/) for bundling and dev server
+- TypeScript throughout the codebase
+
+## Milestones
+
+1. **First light** – orbit camera, planet sphere, directional light.
+2. **Atmosphere** – halo mesh, moon + orbit trails.
+3. **Civ growth** – simulation feeds city light intensity.
+4. **Aid/Strike UI** – action buttons that trigger sim events.
+5. **Spatial structures** – octree + BVH for culling and ray tracing.
+6. **Offline ray tracing** – CPU renderer outputting PNG frames.
 
 ## License
 

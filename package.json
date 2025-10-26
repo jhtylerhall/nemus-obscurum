@@ -1,36 +1,24 @@
 {
-  "name": "nemus-obscurum",
-  "version": "1.0.0",
-  "description": "dark forest esque simulation",
-  "main": "index.js",
+  "name": "dark-forest-homeworld",
+  "private": true,
+  "type": "module",
   "scripts": {
-    "test": "npm run typecheck",
-    "start": "expo start",
-    "android": "expo start --android",
-    "ios": "expo start --ios",
-    "typecheck": "tsc --noEmit"
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "rt:frame": "tsx src/rt/cli.ts"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "type": "commonjs",
   "dependencies": {
-    "@reduxjs/toolkit": "^2.8.2",
-    "expo": "~54.0.20",
-    "expo-gl": "~16.0.7",
-    "nanoid": "^5.1.5",
-    "react": "19.1.0",
-    "react-native": "0.81.5",
-    "react-native-gesture-handler": "~2.28.0",
-    "react-native-reanimated": "~4.1.1",
-    "react-native-svg": "15.12.1",
-    "react-redux": "^9.2.0",
-    "three": "^0.166.1"
+    "three": "^0.169.0",
+    "zustand": "^4.5.5"
   },
   "devDependencies": {
-    "@types/react": "~19.1.0",
-    "@types/three": "^0.179.0",
-    "babel-preset-expo": "~13.2.3",
-    "typescript": "~5.9.2"
+    "@types/node": "^22.10.1",
+    "@types/pngjs": "^6.0.5",
+    "pngjs": "^7.0.0",
+    "ts-node": "^10.9.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.8"
   }
 }
