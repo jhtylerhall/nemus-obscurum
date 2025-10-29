@@ -2,10 +2,10 @@ import * as THREE from "three";
 
 import { planetVertexShader, planetFragmentShader } from "./shaders";
 
-const BASE_DAY = new THREE.Color("#2b4a98");
-const ENERGIZED_DAY = new THREE.Color("#89c9ff");
-const NIGHT_BASE = new THREE.Color("#060912");
-const NIGHT_CITY = new THREE.Color("#ffd18a");
+const BASE_DAY = new THREE.Color("#3d6cff");
+const ENERGIZED_DAY = new THREE.Color("#a5dcff");
+const NIGHT_BASE = new THREE.Color("#081127");
+const NIGHT_CITY = new THREE.Color("#ffdcb0");
 
 type PlanetUniforms = {
   uCamPos: THREE.Uniform<THREE.Vector3>;
@@ -45,7 +45,7 @@ export class Planet {
     });
 
     this.mesh = new THREE.Mesh(geometry, material);
-    this.mesh.scale.setScalar(2.6);
+    this.mesh.scale.setScalar(2.4);
     this.mesh.rotation.y = Math.PI * 0.18;
   }
 
@@ -54,11 +54,15 @@ export class Planet {
   }
 
   updateSurfaceEnergy(energyUse: number): void {
-    this.uniforms.uDayColor.value.lerpColors(BASE_DAY, ENERGIZED_DAY, energyUse);
+    this.uniforms.uDayColor.value.lerpColors(
+      BASE_DAY,
+      ENERGIZED_DAY,
+      THREE.MathUtils.smoothstep(energyUse, 0, 1)
+    );
     const glow = THREE.MathUtils.clamp(energyUse * 0.85, 0, 1);
     this.uniforms.uNightEmit.value.lerpColors(NIGHT_BASE, NIGHT_CITY, glow);
-    this.uniforms.uSpecPower.value = 48 + energyUse * 36;
-    this.uniforms.uSpecStrength.value = 0.18 + energyUse * 0.35;
+    this.uniforms.uSpecPower.value = 44 + energyUse * 32;
+    this.uniforms.uSpecStrength.value = 0.22 + energyUse * 0.3;
   }
 
   updateFrame(
@@ -111,14 +115,14 @@ function generatePlanetTextures(): {
       if (isLand) {
         const mountains = Math.max(0, elevation * 2.4);
         const moisture = Math.max(0, latBand * 1.05 - elevation * 0.3);
-        r = 70 + moisture * 55 + mountains * 60;
-        g = 98 + moisture * 85 - mountains * 50;
-        b = 58 + moisture * 45 - mountains * 70;
+        r = 86 + moisture * 60 + mountains * 62;
+        g = 118 + moisture * 92 - mountains * 42;
+        b = 74 + moisture * 54 - mountains * 58;
       } else {
         const depth = 0.48 + baseNoise * 0.18 - latBand * 0.12;
-        r = 18 + depth * 45;
-        g = 46 + depth * 70;
-        b = 104 + depth * 120;
+        r = 24 + depth * 60;
+        g = 68 + depth * 85;
+        b = 124 + depth * 140;
       }
 
       albedoData[idx] = clampToByte(r);
@@ -137,9 +141,9 @@ function generatePlanetTextures(): {
         const density =
           tradeNoise * 0.7 +
           hubNoise * 0.5 +
-          coastline * 0.9 +
-          latBand * 0.55 -
-          0.8;
+          coastline * 1.05 +
+          latBand * 0.6 -
+          0.82;
         city = Math.pow(Math.max(0, density), 1.8);
       }
       const cityByte = clampToByte(city * 255);

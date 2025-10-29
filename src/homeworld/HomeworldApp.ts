@@ -41,6 +41,10 @@ export class HomeworldApp {
   private readonly clock = new THREE.Clock();
   private readonly planet = new Planet();
   private readonly atmosphere = new Atmosphere(this.planet.mesh);
+  private readonly debugGroup = new THREE.Group();
+  private readonly targetMarker: THREE.Mesh;
+  private readonly sunHelper: THREE.ArrowHelper;
+  private readonly sunHelperDir = new THREE.Vector3();
   private accumulator = 0;
   private readonly civ: CivState = createInitialCivState();
   private readonly statsScratch: HomeworldStats = { ...createInitialCivState() };
@@ -63,6 +67,7 @@ export class HomeworldApp {
   };
 
   private running = false;
+  private debugVisible = false;
   private readonly endFrame: () => void;
   private readonly onStats?: (stats: HomeworldStats) => void;
   private readonly onDebug?: (debug: HomeworldDebugInfo) => void;
@@ -90,6 +95,35 @@ export class HomeworldApp {
 
     this.sunDirection.subVectors(sunLight.target.position, sunLight.position).normalize();
     this.planet.setStarDirection(this.sunDirection);
+    this.planet.updateSurfaceEnergy(this.civ.energyUse);
+    this.atmosphere.updateGlow(this.civ.secrecy);
+
+    const markerMaterial = new THREE.MeshBasicMaterial({ color: 0xffb347 });
+    this.targetMarker = new THREE.Mesh(
+      new THREE.SphereGeometry(0.18, 16, 16),
+      markerMaterial
+    );
+    const arrowLength = this.computePlanetRadius() * 3.5;
+    this.sunHelper = new THREE.ArrowHelper(
+      this.sunHelperDir.copy(this.sunDirection).multiplyScalar(-1),
+      this.focusTarget,
+      arrowLength,
+      0x9fd3ff,
+      arrowLength * 0.22,
+      arrowLength * 0.12
+    );
+    const sunLineMaterial = this.sunHelper.line.material as THREE.Material;
+    const sunConeMaterial = this.sunHelper.cone.material as THREE.Material;
+    sunLineMaterial.depthTest = false;
+    sunConeMaterial.depthTest = false;
+    sunLineMaterial.transparent = true;
+    sunConeMaterial.transparent = true;
+    sunLineMaterial.opacity = 0.65;
+    sunConeMaterial.opacity = 0.65;
+    this.debugGroup.add(this.targetMarker);
+    this.debugGroup.add(this.sunHelper);
+    this.debugGroup.visible = false;
+    this.scene.add(this.debugGroup);
 
     this.endFrame = opts.endFrame;
     this.onStats = opts.onStats;
@@ -119,6 +153,14 @@ export class HomeworldApp {
     this.focusOnPlanet();
   }
 
+  setDebugHelpersVisible(visible: boolean): void {
+    this.debugVisible = visible;
+    this.debugGroup.visible = visible;
+    if (visible) {
+      this.updateDebugHelpers();
+    }
+  }
+
   private frame(): void {
     if (!this.running) {
       return;
@@ -134,6 +176,9 @@ export class HomeworldApp {
     this.atmosphere.updateGlow(this.civ.secrecy);
     this.rig.update();
     this.planet.updateFrame(this.rig.camera, this.sunDirection, dt);
+    if (this.debugVisible) {
+      this.updateDebugHelpers();
+    }
 
     this.renderer.render(this.scene, this.rig.camera);
     this.endFrame();
@@ -171,6 +216,9 @@ export class HomeworldApp {
     this.planet.mesh.getWorldPosition(this.focusTarget);
     const radius = this.computePlanetRadius();
     this.rig.focusOn(this.focusTarget, radius);
+    if (this.debugVisible) {
+      this.updateDebugHelpers();
+    }
   }
 
   private computePlanetRadius(): number {
@@ -181,5 +229,15 @@ export class HomeworldApp {
     const baseRadius = geometry.boundingSphere?.radius ?? 1;
     const scale = this.planet.mesh.scale.x;
     return baseRadius * scale;
+  }
+
+  private updateDebugHelpers(): void {
+    this.targetMarker.position.copy(this.rig.target);
+    const arrowLength = this.computePlanetRadius() * 3.5;
+    this.sunHelper.position.copy(this.rig.target);
+    this.sunHelper.setDirection(
+      this.sunHelperDir.copy(this.sunDirection).multiplyScalar(-1)
+    );
+    this.sunHelper.setLength(arrowLength, arrowLength * 0.22, arrowLength * 0.12);
   }
 }

@@ -24,6 +24,7 @@ export default function App() {
   const [stats, setStats] = useState<HomeworldStats | null>(null);
   const [debug, setDebug] = useState<HomeworldDebugInfo | null>(null);
   const [debugVisible, setDebugVisible] = useState(false);
+  const [visualDebug, setVisualDebug] = useState(false);
 
   const handleStats = useCallback((next: HomeworldStats) => {
     setStats({ ...next });
@@ -35,6 +36,14 @@ export default function App() {
 
   const toggleDebug = useCallback(() => {
     setDebugVisible((prev) => !prev);
+  }, []);
+
+  const toggleVisualDebug = useCallback(() => {
+    setVisualDebug((prev) => {
+      const next = !prev;
+      sceneRef.current?.setVisualDebug(next);
+      return next;
+    });
   }, []);
 
   const surfaceStatus = useMemo(() => {
@@ -65,6 +74,11 @@ export default function App() {
             <Pressable style={styles.button} onPress={toggleDebug}>
               <Text style={styles.buttonLabel}>
                 {debugVisible ? "Hide Debug" : "Show Debug"}
+              </Text>
+            </Pressable>
+            <Pressable style={styles.button} onPress={toggleVisualDebug}>
+              <Text style={styles.buttonLabel}>
+                {visualDebug ? "Hide Visual Debug" : "Show Visual Debug"}
               </Text>
             </Pressable>
           </View>

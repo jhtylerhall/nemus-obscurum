@@ -23,6 +23,7 @@ export type HomeworldSceneProps = {
 
 export type HomeworldSceneHandle = {
   recenter: () => void;
+  setVisualDebug: (visible: boolean) => void;
 };
 
 type RendererBundle = {
@@ -122,6 +123,12 @@ export const HomeworldScene = forwardRef<HomeworldSceneHandle, HomeworldScenePro
         const bundle = bundleRef.current;
         if (bundle) {
           bundle.app.recenter();
+        }
+      },
+      setVisualDebug: (visible: boolean) => {
+        const bundle = bundleRef.current;
+        if (bundle) {
+          bundle.app.setDebugHelpersVisible(visible);
         }
       },
     }),
