@@ -10,10 +10,15 @@ import { GLView } from "expo-gl";
 import type { ExpoWebGLRenderingContext } from "expo-gl";
 import * as THREE from "three";
 
-import { HomeworldApp, HomeworldStats } from "../homeworld/HomeworldApp";
+import { HomeworldApp } from "../homeworld/HomeworldApp";
+import type {
+  HomeworldStats,
+  HomeworldDebugInfo,
+} from "../homeworld/HomeworldApp";
 
 export type HomeworldSceneProps = {
   onStats?: (stats: HomeworldStats) => void;
+  onDebug?: (debug: HomeworldDebugInfo) => void;
 };
 
 export type HomeworldSceneHandle = {
@@ -27,7 +32,7 @@ type RendererBundle = {
 };
 
 export const HomeworldScene = forwardRef<HomeworldSceneHandle, HomeworldSceneProps>(
-  ({ onStats }, ref) => {
+  ({ onStats, onDebug }, ref) => {
   const bundleRef = useRef<RendererBundle | null>(null);
 
   useEffect(() => {
@@ -101,12 +106,13 @@ export const HomeworldScene = forwardRef<HomeworldSceneHandle, HomeworldScenePro
         pixelRatio,
         endFrame: () => gl.endFrameEXP(),
         onStats,
+        onDebug,
       });
       app.start();
 
       bundleRef.current = { gl, renderer, app };
     },
-    [onStats]
+    [onStats, onDebug]
   );
 
   useImperativeHandle(

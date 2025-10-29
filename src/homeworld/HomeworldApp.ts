@@ -16,6 +16,22 @@ export type HomeworldOptions = {
   pixelRatio: number;
   endFrame: () => void;
   onStats?: (stats: HomeworldStats) => void;
+  onDebug?: (debug: HomeworldDebugInfo) => void;
+};
+
+export type HomeworldDebugInfo = {
+  frameTimeMs: number;
+  cameraRadius: number;
+  cameraPhi: number;
+  cameraTheta: number;
+  cameraX: number;
+  cameraY: number;
+  cameraZ: number;
+  targetX: number;
+  targetY: number;
+  targetZ: number;
+  energyUse: number;
+  secrecy: number;
 };
 
 export class HomeworldApp {
@@ -30,10 +46,26 @@ export class HomeworldApp {
   private readonly statsScratch: HomeworldStats = { ...createInitialCivState() };
   private pixelRatio: number;
   private readonly focusTarget = new THREE.Vector3();
+  private readonly sunDirection = new THREE.Vector3();
+  private readonly debugScratch: HomeworldDebugInfo = {
+    frameTimeMs: 0,
+    cameraRadius: 0,
+    cameraPhi: 0,
+    cameraTheta: 0,
+    cameraX: 0,
+    cameraY: 0,
+    cameraZ: 0,
+    targetX: 0,
+    targetY: 0,
+    targetZ: 0,
+    energyUse: 0,
+    secrecy: 0,
+  };
 
   private running = false;
   private readonly endFrame: () => void;
   private readonly onStats?: (stats: HomeworldStats) => void;
+  private readonly onDebug?: (debug: HomeworldDebugInfo) => void;
 
   constructor(renderer: THREE.WebGLRenderer, opts: HomeworldOptions) {
     this.renderer = renderer;
@@ -50,11 +82,18 @@ export class HomeworldApp {
     sunLight.target.position.set(0, 0, 0);
     this.scene.add(sunLight);
     this.scene.add(sunLight.target);
+    const fillLight = new THREE.PointLight(0x3f5b9a, 1.1, 120, 2);
+    fillLight.position.set(-7, 3, -5);
+    this.scene.add(fillLight);
     this.scene.add(this.planet.mesh);
     this.scene.add(this.atmosphere.mesh);
 
+    this.sunDirection.subVectors(sunLight.target.position, sunLight.position).normalize();
+    this.planet.setStarDirection(this.sunDirection);
+
     this.endFrame = opts.endFrame;
     this.onStats = opts.onStats;
+    this.onDebug = opts.onDebug;
     this.running = true;
   }
 
@@ -94,6 +133,7 @@ export class HomeworldApp {
     this.planet.updateSurfaceEnergy(this.civ.energyUse);
     this.atmosphere.updateGlow(this.civ.secrecy);
     this.rig.update();
+    this.planet.updateFrame(this.rig.camera, this.sunDirection, dt);
 
     this.renderer.render(this.scene, this.rig.camera);
     this.endFrame();
@@ -106,6 +146,24 @@ export class HomeworldApp {
       this.statsScratch.morale = this.civ.morale;
       this.statsScratch.revealed = this.civ.revealed;
       this.onStats(this.statsScratch);
+    }
+
+    if (this.onDebug) {
+      this.debugScratch.frameTimeMs = dt * 1000;
+      this.debugScratch.cameraRadius = this.rig.radius;
+      this.debugScratch.cameraPhi = this.rig.phi;
+      this.debugScratch.cameraTheta = this.rig.theta;
+      const camPos = this.rig.camera.position;
+      this.debugScratch.cameraX = camPos.x;
+      this.debugScratch.cameraY = camPos.y;
+      this.debugScratch.cameraZ = camPos.z;
+      const target = this.rig.target;
+      this.debugScratch.targetX = target.x;
+      this.debugScratch.targetY = target.y;
+      this.debugScratch.targetZ = target.z;
+      this.debugScratch.energyUse = this.civ.energyUse;
+      this.debugScratch.secrecy = this.civ.secrecy;
+      this.onDebug(this.debugScratch);
     }
   }
 
