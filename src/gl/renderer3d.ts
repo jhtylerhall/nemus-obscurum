@@ -246,7 +246,8 @@ export function initRenderer(gl: any, opts: InitOpts): RendererHandle {
   threeRefs.current.raycaster = new THREE.Raycaster();
 
   // background
-  const R = ((engine as any).radius ?? 50) * 30;
+  const radiusHint = (engine as any).radius ?? (engine as any).params?.radiusStart ?? 50;
+  const R = Math.max(1, radiusHint) * 30;
   const bgStars = makeOuterStars(3000, R);
   scene.add(bgStars);
   const nebA = makeNebulaSprite(256, "#6cc3ff", 1);
@@ -260,13 +261,14 @@ export function initRenderer(gl: any, opts: InitOpts): RendererHandle {
   threeRefs.current.nebulas = [nebA, nebB, nebC];
 
   // grid/axes for orientation
+  const orientRadius = Math.max(1, radiusHint);
   const grid = new THREE.GridHelper(
-    ((engine as any).radius ?? 50) * 2,
+    orientRadius * 2,
     20,
     0x254066,
     0x15223a
   );
-  const axes = new THREE.AxesHelper(((engine as any).radius ?? 50) * 0.35);
+  const axes = new THREE.AxesHelper(orientRadius * 0.35);
   const setOpacity = (obj: THREE.Object3D, opacity: number) => {
     const mats: any[] = [];
     obj.traverse((o: any) => {

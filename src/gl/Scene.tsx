@@ -213,8 +213,13 @@ export const GLScene = React.forwardRef<GLSceneHandle, Props>(function GLScene(
 
     // place the camera so the real cluster is visible on boot
     const world = getWorld();
-    // Prefer sim radius if engine exposes it, else approximate from params via world builder
-    const radius = (engine as any).radius ?? 200_000;
+    // Prefer sim radius if engine exposes it; fall back to initial params/world size
+    const radius = Math.max(
+      (engine as any).radius ?? 0,
+      (engine as any).params?.radiusStart ?? 0,
+      world?.stars?.length ? (engine as any).params?.starRadius ?? 0 : 0,
+      50
+    );
     const dist = Math.max(20, radius * 2.2);
     // If the renderer has a focusPoint helper, keep using it so UI overlays/motion stay in sync
     rendererHandle.current?.focusPoint?.(0, 0, 0, dist);
