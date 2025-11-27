@@ -4,6 +4,7 @@ import * as THREE from "three";
 
 import { adaptEngine, sampleCivs } from "./engineAdapter";
 import type { CameraState, RaycastRefs } from "./types";
+import { createHomeSystem } from "./homeSystem";
 
 // ---------- Tunables ----------
 const CAMERA_FAR = 5000;
@@ -235,6 +236,8 @@ export function initRenderer(gl: any, opts: InitOpts): RendererHandle {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color("#02050c");
 
+  const homeSystem = createHomeSystem();
+
   const camera = new THREE.PerspectiveCamera(
     60,
     gl.drawingBufferWidth / gl.drawingBufferHeight,
@@ -279,7 +282,7 @@ export function initRenderer(gl: any, opts: InitOpts): RendererHandle {
   };
   setOpacity(grid, 0.25);
   setOpacity(axes, 0.55);
-  scene.add(grid, axes);
+  scene.add(grid, axes, homeSystem.group);
   threeRefs.current.grid = grid;
   threeRefs.current.axes = axes;
 
@@ -440,6 +443,8 @@ export function initRenderer(gl: any, opts: InitOpts): RendererHandle {
     last = now;
 
     E.step(dt);
+
+    homeSystem.update(dt);
 
     if (focusedIdx != null) {
       focusPulse += dt * 2.0;
