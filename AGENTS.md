@@ -9,9 +9,9 @@ This file is for automation agents (Codex, etc.) and contributors. It documents 
 
 ## 1) Tech Stack & Versions
 
-- **App**: Expo (SDK 53), React Native, React 18, Hermes engine  
-- **Rendering**: `expo-gl` + `three` (WebGL via RN), custom shader point clouds  
-- **Gestures**: `react-native-gesture-handler` (v2), `react-native-reanimated`  
+- **App**: Expo (SDK 54), React Native, React 19, Hermes engine
+- **Rendering**: `expo-gl` + `three` (WebGL via RN), custom shader point clouds
+- **Gestures**: `react-native-gesture-handler` (v2), `react-native-reanimated`
 - **UI overlays**: `react-native-svg` (MiniMap, HUD)
 - **State**: Redux Toolkit (light use for sim stats)  
 
