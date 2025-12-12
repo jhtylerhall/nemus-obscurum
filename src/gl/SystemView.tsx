@@ -1,5 +1,5 @@
 // src/gl/SystemView.tsx
-import React, { useCallback, useRef, useState } from "react";
+import React, { useCallback, useMemo, useRef } from "react";
 import { View, PixelRatio, LayoutChangeEvent, StyleSheet, TouchableOpacity, Text } from "react-native";
 import { GLView } from "expo-gl";
 import * as THREE from "three";
@@ -11,15 +11,32 @@ type Props = {
   homeSystem: HomeSystem;
 };
 
+function computeSystemRadius(system: HomeSystem) {
+  let maxOrbit = system.star.radius;
+  system.planets.forEach((planet) => {
+    maxOrbit = Math.max(maxOrbit, planet.orbitRadius + planet.radius);
+  });
+  // Add padding so orbits never kiss the viewport edge on mobile
+  return maxOrbit * 1.15;
+}
+
+function getFitDistance(radius: number, fovDeg: number) {
+  const halfFov = THREE.MathUtils.degToRad(fovDeg * 0.5);
+  return (radius / Math.tan(halfFov)) * 1.1;
+}
+
 export function SystemView({ homeSystem }: Props) {
   const sceneRef = useRef<THREE.Scene | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const frameIdRef = useRef<number>(0);
 
+  const systemRadius = useMemo(() => computeSystemRadius(homeSystem), [homeSystem]);
+  const initialDistance = useMemo(() => getFitDistance(systemRadius, 55), [systemRadius]);
+
   // Camera orbit controls - start with better overview
   const cameraStateRef = useRef({
-    distance: 150, // Further back to see whole system
+    distance: initialDistance,
     azimuth: Math.PI * 0.25, // 45 degrees for nice angle
     elevation: Math.PI * 0.15, // ~27 degrees - not too steep
   });
@@ -40,10 +57,9 @@ export function SystemView({ homeSystem }: Props) {
     viewSizeRef.current = { w: width, h: height };
 
     if (rendererRef.current && cameraRef.current) {
-      const pr = PixelRatio.get();
       rendererRef.current.setSize(
-        Math.max(1, Math.floor(width * pr)),
-        Math.max(1, Math.floor(height * pr)),
+        Math.max(1, Math.floor(width)),
+        Math.max(1, Math.floor(height)),
         false
       );
       cameraRef.current.aspect = width / height;
@@ -67,12 +83,12 @@ export function SystemView({ homeSystem }: Props) {
 
   // Recenter camera on homeworld
   const recenterOnHomeworld = useCallback(() => {
-    // Reset to good overview of whole system
-    cameraStateRef.current.distance = 150;
+    // Reset to a good overview of whole system
+    cameraStateRef.current.distance = initialDistance;
     cameraStateRef.current.azimuth = Math.PI * 0.25;
     cameraStateRef.current.elevation = Math.PI * 0.15;
     updateCamera();
-  }, [updateCamera]);
+  }, [initialDistance, updateCamera]);
 
   // Gesture handling for camera rotation
   const gesture = React.useMemo(() => {
@@ -106,13 +122,18 @@ export function SystemView({ homeSystem }: Props) {
       .runOnJS(true)
       .onUpdate((e) => {
         const newDist = cameraStateRef.current.distance / e.scale;
-        // Expanded range: close-up (15) to wide overview (300)
-        cameraStateRef.current.distance = Math.max(15, Math.min(300, newDist));
+        // Clamp to keep the whole system framed on small screens
+        const minDistance = getFitDistance(systemRadius, 55);
+        const maxDistance = systemRadius * 5;
+        cameraStateRef.current.distance = Math.max(
+          minDistance,
+          Math.min(maxDistance, newDist)
+        );
         updateCamera();
       });
 
     return Gesture.Simultaneous(pan, pinch);
-  }, [updateCamera]);
+  }, [systemRadius, updateCamera]);
 
   const onContextCreate = useCallback(
     (gl: any) => {
@@ -149,8 +170,12 @@ export function SystemView({ homeSystem }: Props) {
         antialias: true,
       });
       const pr = PixelRatio.get();
-      renderer.setSize(gl.drawingBufferWidth, gl.drawingBufferHeight, false);
       renderer.setPixelRatio(pr);
+      renderer.setSize(
+        gl.drawingBufferWidth / pr,
+        gl.drawingBufferHeight / pr,
+        false
+      );
       renderer.setClearColor(0x000000, 1);
       rendererRef.current = renderer;
 
@@ -161,10 +186,10 @@ export function SystemView({ homeSystem }: Props) {
 
       // Create camera
       const camera = new THREE.PerspectiveCamera(
-        60,
+        55,
         gl.drawingBufferWidth / gl.drawingBufferHeight,
-        0.1,
-        1000
+        Math.max(0.1, systemRadius * 0.02),
+        systemRadius * 15
       );
       cameraRef.current = camera;
       updateCamera();
