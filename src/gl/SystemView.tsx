@@ -9,6 +9,7 @@ import { updateSystemOrbits } from "../sim/homeSystem";
 
 type Props = {
   homeSystem: HomeSystem;
+  onPlanetFocus?: (planetId: string) => void;
 };
 
 function computeSystemRadius(system: HomeSystem) {
@@ -76,14 +77,19 @@ function createPlanetMaterial(planetColor: string, radius: number) {
   return material;
 }
 
-export function SystemView({ homeSystem }: Props) {
+export function SystemView({ homeSystem, onPlanetFocus }: Props) {
   const sceneRef = useRef<THREE.Scene | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const frameIdRef = useRef<number>(0);
+  const raycasterRef = useRef(new THREE.Raycaster());
+  const pointerRef = useRef(new THREE.Vector2());
 
   const systemRadius = useMemo(() => computeSystemRadius(homeSystem), [homeSystem]);
   const initialDistance = useMemo(() => getFitDistance(systemRadius, 55), [systemRadius]);
+
+  const focusTargetRef = useRef(new THREE.Vector3(0, 0, 0));
+  const focusRadiusRef = useRef(systemRadius);
 
   // Camera orbit controls - start with better overview
   const cameraStateRef = useRef({
@@ -122,24 +128,45 @@ export function SystemView({ homeSystem }: Props) {
     if (!cameraRef.current) return;
 
     const { distance, azimuth, elevation } = cameraStateRef.current;
+    const focus = focusTargetRef.current;
 
     // Spherical to Cartesian coordinates
     const x = distance * Math.cos(elevation) * Math.sin(azimuth);
     const y = distance * Math.sin(elevation);
     const z = distance * Math.cos(elevation) * Math.cos(azimuth);
 
-    cameraRef.current.position.set(x, y, z);
-    cameraRef.current.lookAt(0, 0, 0);
+    cameraRef.current.position.set(x + focus.x, y + focus.y, z + focus.z);
+    cameraRef.current.lookAt(focus);
   }, []);
 
   // Recenter camera on homeworld
   const recenterOnHomeworld = useCallback(() => {
     // Reset to a good overview of whole system
+    focusTargetRef.current.set(0, 0, 0);
+    focusRadiusRef.current = systemRadius;
     cameraStateRef.current.distance = initialDistance;
     cameraStateRef.current.azimuth = Math.PI * 0.25;
     cameraStateRef.current.elevation = Math.PI * 0.15;
     updateCamera();
-  }, [initialDistance, updateCamera]);
+  }, [initialDistance, systemRadius, updateCamera]);
+
+  const focusPlanet = useCallback(
+    (planetId: string) => {
+      const planet = homeSystem.planets.find((p) => p.id === planetId);
+      if (!planet) return;
+
+      focusTargetRef.current.set(planet.x, planet.y, planet.z);
+      focusRadiusRef.current = planet.radius * 2.6;
+
+      const fitDistance = getFitDistance(focusRadiusRef.current, 55);
+      const closeDistance = Math.max(fitDistance, planet.radius * 4.2);
+      cameraStateRef.current.distance = closeDistance;
+      cameraStateRef.current.azimuth = Math.PI * 0.35;
+      cameraStateRef.current.elevation = Math.PI * 0.22;
+      updateCamera();
+    },
+    [homeSystem.planets, updateCamera]
+  );
 
   // Gesture handling for camera rotation
   const gesture = React.useMemo(() => {
@@ -174,7 +201,7 @@ export function SystemView({ homeSystem }: Props) {
       .onUpdate((e) => {
         const newDist = cameraStateRef.current.distance / e.scale;
         // Clamp to keep the whole system framed on small screens
-        const minDistance = getFitDistance(systemRadius, 55);
+        const minDistance = getFitDistance(focusRadiusRef.current, 55);
         const maxDistance = systemRadius * 5;
         cameraStateRef.current.distance = Math.max(
           minDistance,
@@ -183,8 +210,34 @@ export function SystemView({ homeSystem }: Props) {
         updateCamera();
       });
 
-    return Gesture.Simultaneous(pan, pinch);
-  }, [systemRadius, updateCamera]);
+    const tap = Gesture.Tap()
+      .runOnJS(true)
+      .maxDuration(250)
+      .onEnd((event) => {
+        const { w, h } = viewSizeRef.current;
+        if (!cameraRef.current || w === 0 || h === 0) return;
+
+        const x = (event.x / w) * 2 - 1;
+        const y = -(event.y / h) * 2 + 1;
+        pointerRef.current.set(x, y);
+
+        const raycaster = raycasterRef.current;
+        raycaster.setFromCamera(pointerRef.current, cameraRef.current);
+
+        const meshes = Array.from(planetMeshesRef.current.values());
+        const intersections = raycaster.intersectObjects(meshes, false);
+        if (intersections.length === 0) return;
+
+        const hit = intersections[0].object as THREE.Mesh;
+        const planetId = (hit.userData as { planetId?: string } | undefined)?.planetId;
+        if (planetId) {
+          focusPlanet(planetId);
+          onPlanetFocus?.(planetId);
+        }
+      });
+
+    return Gesture.Simultaneous(pan, pinch, tap);
+  }, [focusPlanet, systemRadius, updateCamera]);
 
   const onContextCreate = useCallback(
     (gl: any) => {
@@ -239,7 +292,7 @@ export function SystemView({ homeSystem }: Props) {
       const camera = new THREE.PerspectiveCamera(
         55,
         gl.drawingBufferWidth / gl.drawingBufferHeight,
-        Math.max(0.1, systemRadius * 0.02),
+        Math.max(0.05, systemRadius * 0.02),
         systemRadius * 15
       );
       cameraRef.current = camera;
@@ -283,6 +336,7 @@ export function SystemView({ homeSystem }: Props) {
 
         const planetMesh = new THREE.Mesh(planetGeometry, planetMaterial);
         planetMesh.position.set(planet.x, planet.y, planet.z);
+        planetMesh.userData = { planetId: planet.id };
         scene.add(planetMesh);
         planetMeshesRef.current.set(planet.id, planetMesh);
 
@@ -386,7 +440,10 @@ export function SystemView({ homeSystem }: Props) {
         {/* Recenter button */}
         <TouchableOpacity
           style={styles.recenterButton}
-          onPress={recenterOnHomeworld}
+          onPress={() => {
+            recenterOnHomeworld();
+            onPlanetFocus?.(homeSystem.homeworld.id);
+          }}
           activeOpacity={0.7}
         >
           <Text style={styles.recenterText}>⌖ Recenter</Text>
