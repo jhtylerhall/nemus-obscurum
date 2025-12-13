@@ -514,8 +514,13 @@ export function SystemView({ homeSystem }: Props) {
             onPress={lockedPlanetId ? unlockPlanet : relockPlanet}
             activeOpacity={0.8}
           >
-            <Text style={styles.lockText}>
-              {lockedPlanetId ? "🔒 Locked on" : "🔓 Tracking"} {
+            <Text
+              style={[
+                styles.lockText,
+                lockedPlanetId ? styles.lockTextLocked : styles.lockTextUnlocked,
+              ]}
+            >
+              {lockedPlanetId ? "🔒 Locked on" : "🔓"} {
                 homeSystem.planets.find((p) => p.id === selectedPlanetId)?.name ??
                 "planet"
               }
@@ -581,6 +586,12 @@ const styles = StyleSheet.create({
     color: '#b6c8ff',
     fontSize: 13,
     fontWeight: '700',
+  },
+  lockTextLocked: {
+    color: '#d7e3ff',
+  },
+  lockTextUnlocked: {
+    color: '#f2f6ff',
   },
   lockSubtext: {
     color: '#7f95c3',
