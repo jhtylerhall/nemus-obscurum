@@ -38,6 +38,9 @@ function Root() {
         <Text style={styles.footerText}>
           Green orbit = Habitable world
         </Text>
+        <Text style={styles.footerText}>
+          Tap a planet to lock to planet scale • Use the lock badge to unlock
+        </Text>
       </View>
     </SafeAreaView>
   );
