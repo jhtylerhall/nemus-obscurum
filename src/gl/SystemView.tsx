@@ -25,6 +25,57 @@ function getFitDistance(radius: number, fovDeg: number) {
   return (radius / Math.tan(halfFov)) * 1.1;
 }
 
+function createPlanetTexture(colorHex: number) {
+  const size = 64;
+  const data = new Uint8Array(size * size * 3);
+  const base = new THREE.Color(colorHex);
+
+  for (let y = 0; y < size; y++) {
+    const lat = y / size;
+    const band = Math.sin(lat * Math.PI * 3) * 0.08; // soft latitudinal bands
+
+    for (let x = 0; x < size; x++) {
+      const idx = (y * size + x) * 3;
+      const noise = (Math.random() - 0.5) * 0.06;
+      const tint = band + noise;
+
+      data[idx] = Math.max(0, Math.min(255, Math.round((base.r + tint) * 255)));
+      data[idx + 1] = Math.max(
+        0,
+        Math.min(255, Math.round((base.g + tint * 0.7) * 255))
+      );
+      data[idx + 2] = Math.max(
+        0,
+        Math.min(255, Math.round((base.b + tint * 0.5) * 255))
+      );
+    }
+  }
+
+  const texture = new THREE.DataTexture(data, size, size, THREE.RGBFormat);
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.wrapT = THREE.RepeatWrapping;
+  texture.minFilter = THREE.LinearMipMapLinearFilter;
+  texture.magFilter = THREE.LinearFilter;
+  texture.needsUpdate = true;
+  return texture;
+}
+
+function createPlanetMaterial(planetColor: string, radius: number) {
+  const color = new THREE.Color(planetColor);
+  const surfaceTexture = createPlanetTexture(color.getHex());
+  const material = new THREE.MeshPhongMaterial({
+    color,
+    map: surfaceTexture,
+    bumpMap: surfaceTexture,
+    bumpScale: Math.max(0.08, radius * 0.02),
+    specular: new THREE.Color(0x223344),
+    shininess: 32,
+    emissive: color.clone().multiplyScalar(0.08),
+  });
+  material.flatShading = false;
+  return material;
+}
+
 export function SystemView({ homeSystem }: Props) {
   const sceneRef = useRef<THREE.Scene | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
@@ -195,8 +246,11 @@ export function SystemView({ homeSystem }: Props) {
       updateCamera();
 
       // Add ambient light
-      const ambientLight = new THREE.AmbientLight(0x404040, 0.5);
+      const ambientLight = new THREE.AmbientLight(0x2a2f40, 0.35);
       scene.add(ambientLight);
+
+      const skyLight = new THREE.HemisphereLight(0x6f80a0, 0x05060a, 0.35);
+      scene.add(skyLight);
 
       // Create star (sun) - use basic material with bright color
       const starGeometry = new THREE.SphereGeometry(homeSystem.star.radius, 32, 32);
@@ -214,21 +268,18 @@ export function SystemView({ homeSystem }: Props) {
       // Add point light at star position
       const starLight = new THREE.PointLight(
         homeSystem.star.color,
-        2.0,
-        500
+        2.5,
+        systemRadius * 6
       );
+      starLight.decay = 2;
       starLight.position.copy(starMesh.position);
       scene.add(starLight);
 
       // Create planets
       homeSystem.planets.forEach((planet) => {
         // Planet mesh
-        const planetGeometry = new THREE.SphereGeometry(planet.radius, 24, 24);
-        const planetMaterial = new THREE.MeshStandardMaterial({
-          color: planet.color,
-          roughness: 0.8,
-          metalness: 0.2,
-        });
+        const planetGeometry = new THREE.SphereGeometry(planet.radius, 48, 48);
+        const planetMaterial = createPlanetMaterial(planet.color, planet.radius);
 
         const planetMesh = new THREE.Mesh(planetGeometry, planetMaterial);
         planetMesh.position.set(planet.x, planet.y, planet.z);
