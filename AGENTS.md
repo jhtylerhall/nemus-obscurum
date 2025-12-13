@@ -9,9 +9,9 @@ This file is for automation agents (Codex, etc.) and contributors. It documents 
 
 ## 1) Tech Stack & Versions
 
-- **App**: Expo (SDK 53), React Native, React 18, Hermes engine  
-- **Rendering**: `expo-gl` + `three` (WebGL via RN), custom shader point clouds  
-- **Gestures**: `react-native-gesture-handler` (v2), `react-native-reanimated`  
+- **App**: Expo (SDK 54), React Native, React 19, Hermes engine
+- **Rendering**: `expo-gl` + `three` (WebGL via RN), custom shader point clouds
+- **Gestures**: `react-native-gesture-handler` (v2), `react-native-reanimated`
 - **UI overlays**: `react-native-svg` (MiniMap, HUD)
 - **State**: Redux Toolkit (light use for sim stats)  
 
@@ -210,11 +210,14 @@ npx expo start -c
 
 When opening PRs or automated edits, include:
 
-1) **Summary**: User-visible changes and why.  
-2) **Perf note**: Any effect on FPS/memory.  
-3) **Screenshots** (before/after).  
-4) **Verification steps**: copy/paste commands + in-app steps.  
-5) **Risk**: surfaces touched (Scene, Engine, Overlays, State).  
+1) **Summary**: User-visible changes and why.
+   - Add a concise implementation note so future contributors understand the approach and can build on it.
+2) **Perf note**: Any effect on FPS/memory.
+3) **Screenshots** (before/after).
+4) **Verification steps**: copy/paste commands + in-app steps.
+5) **Risk**: surfaces touched (Scene, Engine, Overlays, State).
+
+Always aim to expand the repository’s knowledge: document decisions, assumptions, and new patterns so subsequent tasks have richer context to reference.
 
 Prefer **atomic PRs** (one feature/fix per branch).
 
