@@ -43,11 +43,11 @@ function seededRandom(seed: number) {
   };
 }
 
-const STAR_COLORS = [
-  { temp: 3000, color: '#ffaa77', name: 'Red Dwarf' },
-  { temp: 5000, color: '#ffdd88', name: 'Yellow Star' },
-  { temp: 6000, color: '#ffffee', name: 'White Star' },
-];
+const HOME_STAR_PROFILE = {
+  temp: 5778,
+  color: '#ffd27a',
+  name: 'G-type Star',
+};
 
 const PLANET_COLORS = [
   '#8b7355', // Rocky brown
@@ -64,7 +64,7 @@ export function generateHomeSystem(seed: number = Date.now()): HomeSystem {
   const rng = seededRandom(seed);
 
   // Generate star
-  const starType = STAR_COLORS[Math.floor(rng() * STAR_COLORS.length)];
+  const starType = HOME_STAR_PROFILE;
   const star: Star = {
     id: 'home-star',
     name: 'Home Star',
