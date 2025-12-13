@@ -94,7 +94,7 @@ export const GLScene = React.forwardRef<GLSceneHandle, Props>(function GLScene(
 
   const threeRefs = useRef<
     RaycastRefs & {
-      bgStars?: THREE.Points; // NEW: sim-driven star Points
+      bgStars?: THREE.Object3D; // NEW: sim-driven star Points
       nebulas?: THREE.Sprite[];
       grid?: THREE.GridHelper;
       axes?: THREE.AxesHelper;

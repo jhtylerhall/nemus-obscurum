@@ -50,36 +50,61 @@ void main(){
 }`;
 
 // ---------- background: parallax stars + soft nebula ----------
-function makeOuterStars(n: number, R: number) {
-  const g = new THREE.BufferGeometry();
-  const p = new Float32Array(n * 3);
-  const c = new Float32Array(n * 3);
-  for (let i = 0; i < n; i++) {
-    const u = Math.random(),
-      v = Math.random();
-    const theta = 2 * Math.PI * u;
-    const cosPhi = 2 * v - 1;
-    const sinPhi = Math.sqrt(Math.max(0, 1 - cosPhi * cosPhi));
-    const r = R * (0.94 + 0.12 * Math.random());
-    p[i * 3 + 0] = r * sinPhi * Math.cos(theta);
-    p[i * 3 + 1] = r * cosPhi * 0.6;
-    p[i * 3 + 2] = r * sinPhi * Math.sin(theta);
-    const t = Math.random();
-    c[i * 3 + 0] = 0.75 + 0.25 * t * 0.2;
-    c[i * 3 + 1] = 0.82 + 0.18 * t;
-    c[i * 3 + 2] = 0.95 + 0.05 * Math.random();
-  }
-  g.setAttribute("position", new THREE.BufferAttribute(p, 3));
-  g.setAttribute("color", new THREE.BufferAttribute(c, 3));
-  const m = new THREE.PointsMaterial({
-    size: 2,
-    sizeAttenuation: true,
-    vertexColors: true,
-    transparent: true,
-  });
-  const mesh = new THREE.Points(g, m);
-  mesh.frustumCulled = false;
-  return mesh;
+function makeOuterStars(n: number, R: number, dpr: number) {
+  const group = new THREE.Group();
+
+  const buildLayer = (
+    count: number,
+    radius: number,
+    size: number,
+    opacity: number,
+    seedJitter: number
+  ) => {
+    const g = new THREE.BufferGeometry();
+    const p = new Float32Array(count * 3);
+    const c = new Float32Array(count * 3);
+    for (let i = 0; i < count; i++) {
+      const u = Math.random(),
+        v = Math.random();
+      const theta = 2 * Math.PI * u;
+      const cosPhi = 2 * v - 1;
+      const sinPhi = Math.sqrt(Math.max(0, 1 - cosPhi * cosPhi));
+      const r = radius * (0.9 + 0.1 * Math.random());
+      p[i * 3 + 0] = r * sinPhi * Math.cos(theta);
+      p[i * 3 + 1] = r * cosPhi * 0.55;
+      p[i * 3 + 2] = r * sinPhi * Math.sin(theta);
+
+      // Softer, more distant palette so they sit behind the system
+      const t = Math.random();
+      const cool = 0.78 + 0.12 * t;
+      c[i * 3 + 0] = cool * (0.9 + 0.05 * seedJitter);
+      c[i * 3 + 1] = cool;
+      c[i * 3 + 2] = 0.95 + 0.04 * Math.random();
+    }
+    g.setAttribute("position", new THREE.BufferAttribute(p, 3));
+    g.setAttribute("color", new THREE.BufferAttribute(c, 3));
+    const m = new THREE.PointsMaterial({
+      size: size * dpr,
+      sizeAttenuation: false,
+      vertexColors: true,
+      transparent: true,
+      opacity,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      depthTest: false,
+    });
+    const mesh = new THREE.Points(g, m);
+    mesh.frustumCulled = false;
+    mesh.renderOrder = -5;
+    return mesh;
+  };
+
+  const far = buildLayer(Math.floor(n * 0.65), R, 1.2, 0.6, 0.4);
+  const near = buildLayer(Math.floor(n * 0.35), R * 0.65, 1.8, 0.35, 0.8);
+
+  group.add(far, near);
+  group.frustumCulled = false;
+  return group;
 }
 function makeNebulaSprite(
   size: number,
@@ -153,7 +178,7 @@ type InitOpts = {
   }>;
   threeRefs: React.MutableRefObject<
     RaycastRefs & {
-      bgStars?: THREE.Points;
+      bgStars?: THREE.Object3D;
       nebulas?: THREE.Sprite[];
       grid?: THREE.GridHelper;
       axes?: THREE.AxesHelper;
@@ -247,7 +272,7 @@ export function initRenderer(gl: any, opts: InitOpts): RendererHandle {
 
   // background
   const R = ((engine as any).radius ?? 50) * 30;
-  const bgStars = makeOuterStars(3000, R);
+  const bgStars = makeOuterStars(3000, R, pr);
   scene.add(bgStars);
   const nebA = makeNebulaSprite(256, "#6cc3ff", 1);
   const nebB = makeNebulaSprite(256, "#f48fb1", 2);
@@ -434,6 +459,7 @@ export function initRenderer(gl: any, opts: InitOpts): RendererHandle {
   let focusPulse = 0;
   let last = Date.now(),
     ema = 60;
+  const bgParallax = new THREE.Vector3();
   const loop = () => {
     const now = Date.now();
     const dt = Math.min(0.05, (now - last) / 1000);
@@ -479,6 +505,13 @@ export function initRenderer(gl: any, opts: InitOpts): RendererHandle {
     camera.updateProjectionMatrix();
     camera.position.set(cx, cy, cz);
     camera.lookAt(lookAt.current);
+
+    if (threeRefs.current.bgStars) {
+      bgParallax.copy(camera.position);
+      bgParallax.multiplyScalar(0.02);
+      threeRefs.current.bgStars.position.copy(bgParallax);
+      threeRefs.current.bgStars.rotation.y += dt * 0.015;
+    }
 
     if (E.starCount > lastStarCount) {
       for (let i = lastStarCount; i < E.starCount; i++) {
