@@ -58,29 +58,38 @@ function makeOuterStars(n: number, R: number, dpr: number) {
     radius: number,
     size: number,
     opacity: number,
-    seedJitter: number
+    biasToPlane: number
   ) => {
     const g = new THREE.BufferGeometry();
     const p = new Float32Array(count * 3);
     const c = new Float32Array(count * 3);
-    for (let i = 0; i < count; i++) {
-      const u = Math.random(),
-        v = Math.random();
-      const theta = 2 * Math.PI * u;
-      const cosPhi = 2 * v - 1;
-      const sinPhi = Math.sqrt(Math.max(0, 1 - cosPhi * cosPhi));
-      const r = radius * (0.9 + 0.1 * Math.random());
-      p[i * 3 + 0] = r * sinPhi * Math.cos(theta);
-      p[i * 3 + 1] = r * cosPhi * 0.55;
-      p[i * 3 + 2] = r * sinPhi * Math.sin(theta);
 
-      // Softer, more distant palette so they sit behind the system
-      const t = Math.random();
-      const cool = 0.78 + 0.12 * t;
-      c[i * 3 + 0] = cool * (0.9 + 0.05 * seedJitter);
-      c[i * 3 + 1] = cool;
-      c[i * 3 + 2] = 0.95 + 0.04 * Math.random();
+    for (let i = 0; i < count; i++) {
+      const onBand = Math.random() < biasToPlane;
+      const theta = 2 * Math.PI * Math.random();
+      const phi = onBand
+        ? (Math.random() - 0.5) * 0.35 // clustered into a "galactic" band
+        : Math.acos(2 * Math.random() - 1) - Math.PI / 2; // uniform sphere
+      const r = radius * (0.94 + 0.06 * Math.random());
+
+      const cosPhi = Math.cos(phi);
+      const sinPhi = Math.sin(phi);
+      p[i * 3 + 0] = r * cosPhi * Math.cos(theta);
+      p[i * 3 + 1] = r * sinPhi * 0.7;
+      p[i * 3 + 2] = r * cosPhi * Math.sin(theta);
+
+      // Cooler core with a few warm twinkles so the field recedes
+      const cool = 0.8 + 0.15 * Math.random();
+      const warm = 0.8 + 0.2 * Math.random();
+      const hueMix = onBand ? 0.65 : 0.4;
+      const rCol = cool * (0.7 + 0.2 * hueMix) + warm * (0.15 * (1 - hueMix));
+      const gCol = cool;
+      const bCol = 0.95 + 0.04 * Math.random();
+      c[i * 3 + 0] = rCol;
+      c[i * 3 + 1] = gCol;
+      c[i * 3 + 2] = bCol;
     }
+
     g.setAttribute("position", new THREE.BufferAttribute(p, 3));
     g.setAttribute("color", new THREE.BufferAttribute(c, 3));
     const m = new THREE.PointsMaterial({
@@ -99,8 +108,8 @@ function makeOuterStars(n: number, R: number, dpr: number) {
     return mesh;
   };
 
-  const far = buildLayer(Math.floor(n * 0.65), R, 1.2, 0.6, 0.4);
-  const near = buildLayer(Math.floor(n * 0.35), R * 0.65, 1.8, 0.35, 0.8);
+  const far = buildLayer(Math.floor(n * 0.7), R * 1.15, 1.0, 0.58, 0.75);
+  const near = buildLayer(Math.floor(n * 0.3), R, 1.45, 0.38, 0.45);
 
   group.add(far, near);
   group.frustumCulled = false;
@@ -271,17 +280,23 @@ export function initRenderer(gl: any, opts: InitOpts): RendererHandle {
   threeRefs.current.raycaster = new THREE.Raycaster();
 
   // background
-  const R = ((engine as any).radius ?? 50) * 30;
-  const bgStars = makeOuterStars(3000, R, pr);
-  scene.add(bgStars);
+  const R = ((engine as any).radius ?? 50) * 36;
+  const bgStars = makeOuterStars(3400, R, pr);
+  const bgGroup = new THREE.Group();
+  bgGroup.add(bgStars);
+
   const nebA = makeNebulaSprite(256, "#6cc3ff", 1);
   const nebB = makeNebulaSprite(256, "#f48fb1", 2);
   const nebC = makeNebulaSprite(256, "#88f7c5", 3);
-  nebA.position.set(-R * 0.4, R * 0.15, -R * 0.6);
-  nebB.position.set(R * 0.6, -R * 0.25, R * 0.2);
-  nebC.position.set(-R * 0.2, -R * 0.3, R * 0.7);
-  scene.add(nebA, nebB, nebC);
-  threeRefs.current.bgStars = bgStars;
+  nebA.position.set(-R * 0.45, R * 0.08, -R * 0.55);
+  nebB.position.set(R * 0.62, -R * 0.28, R * 0.25);
+  nebC.position.set(-R * 0.25, -R * 0.32, R * 0.72);
+  bgGroup.add(nebA, nebB, nebC);
+
+  bgGroup.frustumCulled = false;
+  bgGroup.renderOrder = -5;
+  scene.add(bgGroup);
+  threeRefs.current.bgStars = bgGroup;
   threeRefs.current.nebulas = [nebA, nebB, nebC];
 
   // grid/axes for orientation
@@ -459,7 +474,6 @@ export function initRenderer(gl: any, opts: InitOpts): RendererHandle {
   let focusPulse = 0;
   let last = Date.now(),
     ema = 60;
-  const bgParallax = new THREE.Vector3();
   const loop = () => {
     const now = Date.now();
     const dt = Math.min(0.05, (now - last) / 1000);
@@ -507,10 +521,9 @@ export function initRenderer(gl: any, opts: InitOpts): RendererHandle {
     camera.lookAt(lookAt.current);
 
     if (threeRefs.current.bgStars) {
-      bgParallax.copy(camera.position);
-      bgParallax.multiplyScalar(0.02);
-      threeRefs.current.bgStars.position.copy(bgParallax);
-      threeRefs.current.bgStars.rotation.y += dt * 0.015;
+      threeRefs.current.bgStars.position.copy(camera.position);
+      threeRefs.current.bgStars.rotation.y += dt * 0.006;
+      threeRefs.current.bgStars.rotation.x += dt * 0.0025;
     }
 
     if (E.starCount > lastStarCount) {
