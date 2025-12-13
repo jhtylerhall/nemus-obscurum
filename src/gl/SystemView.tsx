@@ -1,5 +1,5 @@
 // src/gl/SystemView.tsx
-import React, { useCallback, useMemo, useRef } from "react";
+import React, { useCallback, useMemo, useRef, useState } from "react";
 import { View, PixelRatio, LayoutChangeEvent, StyleSheet, TouchableOpacity, Text } from "react-native";
 import { GLView } from "expo-gl";
 import * as THREE from "three";
@@ -89,6 +89,10 @@ export function SystemView({ homeSystem }: Props) {
 
   const focusTargetRef = useRef(new THREE.Vector3(0, 0, 0));
   const focusRadiusRef = useRef(systemRadius);
+  const lockedPlanetIdRef = useRef<string | null>(null);
+  const lockedDistanceRef = useRef<number | null>(null);
+
+  const [lockedPlanetId, setLockedPlanetId] = useState<string | null>(null);
 
   // Camera orbit controls - start with better overview
   const cameraStateRef = useRef({
@@ -143,6 +147,9 @@ export function SystemView({ homeSystem }: Props) {
     // Reset to a good overview of whole system
     focusTargetRef.current.set(0, 0, 0);
     focusRadiusRef.current = systemRadius;
+    lockedPlanetIdRef.current = null;
+    lockedDistanceRef.current = null;
+    setLockedPlanetId(null);
     cameraStateRef.current.distance = initialDistance;
     cameraStateRef.current.azimuth = Math.PI * 0.25;
     cameraStateRef.current.elevation = Math.PI * 0.15;
@@ -162,20 +169,31 @@ export function SystemView({ homeSystem }: Props) {
       cameraStateRef.current.distance = closeDistance;
       cameraStateRef.current.azimuth = Math.PI * 0.35;
       cameraStateRef.current.elevation = Math.PI * 0.22;
+      lockedPlanetIdRef.current = planetId;
+      lockedDistanceRef.current = closeDistance;
+      setLockedPlanetId(planetId);
       updateCamera();
     },
     [homeSystem.planets, updateCamera]
   );
+
+  const unlockPlanet = useCallback(() => {
+    lockedPlanetIdRef.current = null;
+    lockedDistanceRef.current = null;
+    setLockedPlanetId(null);
+  }, []);
 
   // Gesture handling for camera rotation
   const gesture = React.useMemo(() => {
     const pan = Gesture.Pan()
       .runOnJS(true)
       .onBegin(() => {
+        if (lockedPlanetIdRef.current) return;
         lastGestureRef.current.x = 0;
         lastGestureRef.current.y = 0;
       })
       .onUpdate((e) => {
+        if (lockedPlanetIdRef.current) return;
         const sensitivity = 0.005;
         const dx = e.translationX - lastGestureRef.current.x;
         const dy = e.translationY - lastGestureRef.current.y;
@@ -198,6 +216,7 @@ export function SystemView({ homeSystem }: Props) {
     const pinch = Gesture.Pinch()
       .runOnJS(true)
       .onUpdate((e) => {
+        if (lockedPlanetIdRef.current) return;
         const newDist = cameraStateRef.current.distance / e.scale;
         // Clamp to keep the whole system framed on small screens
         const minDistance = getFitDistance(focusRadiusRef.current, 55);
@@ -213,6 +232,7 @@ export function SystemView({ homeSystem }: Props) {
       .runOnJS(true)
       .maxDuration(250)
       .onEnd((event) => {
+        if (lockedPlanetIdRef.current) return;
         const { w, h } = viewSizeRef.current;
         if (!cameraRef.current || w === 0 || h === 0) return;
 
@@ -420,6 +440,23 @@ export function SystemView({ homeSystem }: Props) {
           }
         });
 
+        if (lockedPlanetIdRef.current) {
+          const lockedPlanet = homeSystem.planets.find(
+            (p) => p.id === lockedPlanetIdRef.current
+          );
+          if (lockedPlanet) {
+            focusTargetRef.current.set(
+              lockedPlanet.x,
+              lockedPlanet.y,
+              lockedPlanet.z
+            );
+            if (lockedDistanceRef.current !== null) {
+              cameraStateRef.current.distance = lockedDistanceRef.current;
+            }
+            updateCamera();
+          }
+        }
+
         // Render
         renderer.render(scene, camera);
         gl.endFrameEXP();
@@ -443,6 +480,22 @@ export function SystemView({ homeSystem }: Props) {
         >
           <Text style={styles.recenterText}>⌖ Recenter</Text>
         </TouchableOpacity>
+
+        {lockedPlanetId && (
+          <TouchableOpacity
+            style={styles.lockBadge}
+            onPress={unlockPlanet}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.lockText}>
+              🔒 Locked on {
+                homeSystem.planets.find((p) => p.id === lockedPlanetId)?.name ??
+                "planet"
+              }
+            </Text>
+            <Text style={styles.lockSubtext}>Tap to unlock and pan freely</Text>
+          </TouchableOpacity>
+        )}
       </View>
     </GestureDetector>
   );
@@ -475,5 +528,32 @@ const styles = StyleSheet.create({
     color: '#e6efff',
     fontSize: 14,
     fontWeight: '600',
+  },
+  lockBadge: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    backgroundColor: 'rgba(14, 25, 48, 0.95)',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#2c3f6d',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.35,
+    shadowRadius: 4,
+    elevation: 5,
+    alignItems: 'flex-start',
+  },
+  lockText: {
+    color: '#b6c8ff',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  lockSubtext: {
+    color: '#7f95c3',
+    fontSize: 11,
+    marginTop: 2,
   },
 });
