@@ -38,6 +38,7 @@ function Root() {
         <Text style={styles.footerText}>
           Green orbit = Habitable world
         </Text>
+        <Text style={styles.footerText}>Tap a planet to dive to planet scale</Text>
       </View>
     </SafeAreaView>
   );
