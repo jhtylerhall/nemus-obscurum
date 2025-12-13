@@ -90,9 +90,11 @@ export function SystemView({ homeSystem }: Props) {
   const focusTargetRef = useRef(new THREE.Vector3(0, 0, 0));
   const focusRadiusRef = useRef(systemRadius);
   const lockedPlanetIdRef = useRef<string | null>(null);
+  const selectedPlanetIdRef = useRef<string | null>(null);
   const lockedDistanceRef = useRef<number | null>(null);
 
   const [lockedPlanetId, setLockedPlanetId] = useState<string | null>(null);
+  const [selectedPlanetId, setSelectedPlanetId] = useState<string | null>(null);
 
   // Camera orbit controls - start with better overview
   const cameraStateRef = useRef({
@@ -149,7 +151,9 @@ export function SystemView({ homeSystem }: Props) {
     focusRadiusRef.current = systemRadius;
     lockedPlanetIdRef.current = null;
     lockedDistanceRef.current = null;
+    selectedPlanetIdRef.current = null;
     setLockedPlanetId(null);
+    setSelectedPlanetId(null);
     cameraStateRef.current.distance = initialDistance;
     cameraStateRef.current.azimuth = Math.PI * 0.25;
     cameraStateRef.current.elevation = Math.PI * 0.15;
@@ -163,6 +167,9 @@ export function SystemView({ homeSystem }: Props) {
 
       focusTargetRef.current.set(planet.x, planet.y, planet.z);
       focusRadiusRef.current = planet.radius * 2.6;
+
+      selectedPlanetIdRef.current = planetId;
+      setSelectedPlanetId(planetId);
 
       const fitDistance = getFitDistance(focusRadiusRef.current, 55);
       const closeDistance = Math.max(fitDistance, planet.radius * 4.2);
@@ -182,6 +189,26 @@ export function SystemView({ homeSystem }: Props) {
     lockedDistanceRef.current = null;
     setLockedPlanetId(null);
   }, []);
+
+  const relockPlanet = useCallback(() => {
+    const planetId = selectedPlanetIdRef.current;
+    if (!planetId) return;
+
+    const planet = homeSystem.planets.find((p) => p.id === planetId);
+    if (!planet) return;
+
+    focusTargetRef.current.set(planet.x, planet.y, planet.z);
+    focusRadiusRef.current = planet.radius * 2.6;
+
+    const minDistance = getFitDistance(focusRadiusRef.current, 55);
+    const currentDistance = Math.max(minDistance, cameraStateRef.current.distance);
+    cameraStateRef.current.distance = currentDistance;
+
+    lockedPlanetIdRef.current = planetId;
+    lockedDistanceRef.current = currentDistance;
+    setLockedPlanetId(planetId);
+    updateCamera();
+  }, [homeSystem.planets, updateCamera]);
 
   // Gesture handling for camera rotation
   const gesture = React.useMemo(() => {
@@ -481,19 +508,23 @@ export function SystemView({ homeSystem }: Props) {
           <Text style={styles.recenterText}>⌖ Recenter</Text>
         </TouchableOpacity>
 
-        {lockedPlanetId && (
+        {selectedPlanetId && (
           <TouchableOpacity
             style={styles.lockBadge}
-            onPress={unlockPlanet}
+            onPress={lockedPlanetId ? unlockPlanet : relockPlanet}
             activeOpacity={0.8}
           >
             <Text style={styles.lockText}>
-              🔒 Locked on {
-                homeSystem.planets.find((p) => p.id === lockedPlanetId)?.name ??
+              {lockedPlanetId ? "🔒 Locked on" : "🔓 Tracking"} {
+                homeSystem.planets.find((p) => p.id === selectedPlanetId)?.name ??
                 "planet"
               }
             </Text>
-            <Text style={styles.lockSubtext}>Tap to unlock and pan freely</Text>
+            <Text style={styles.lockSubtext}>
+              {lockedPlanetId
+                ? "Tap to unlock and pan freely"
+                : "Tap to lock and keep tracking"}
+            </Text>
           </TouchableOpacity>
         )}
       </View>
