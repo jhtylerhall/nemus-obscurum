@@ -19,8 +19,6 @@ import { pickStrongest, pickFrontier, pickNearest, pickDensest } from "./poi";
 import { createCameraController } from "./cameraController";
 import { initRenderer } from "./renderer3d";
 import type { CameraState, RaycastRefs } from "./types";
-import { createStarsMesh } from "./StarsMesh";
-import { getWorld } from "../sim/world";
 
 // Public API for parent components
 export type GLSceneHandle = {
@@ -185,41 +183,6 @@ export const GLScene = React.forwardRef<GLSceneHandle, Props>(function GLScene(
     lookAt.current.set(0, 0, 0);
   }, [engine]);
 
-  // NEW: ensure stars are created from the actual sim and added to the scene
-  const ensureSimStars = useCallback(() => {
-    const { scene, camera } = threeRefs.current;
-    if (!scene || !camera) return;
-
-    // avoid duplicates on hot reloads
-    if (
-      threeRefs.current.bgStars &&
-      scene.children.includes(threeRefs.current.bgStars)
-    ) {
-      return;
-    }
-
-    // build (or get) the real world, then build a static Points cloud
-    const starsPoints = createStarsMesh(PixelRatio.get());
-    threeRefs.current.bgStars = starsPoints;
-    scene.add(starsPoints);
-
-    // sane camera + far clip for a big cluster
-    camera.near = Math.min(camera.near, 0.1);
-    camera.far = Math.max(camera.far, 1e9);
-    camera.updateProjectionMatrix();
-
-    // optional: set clear color to deep space
-    rendererRef.current?.renderer.setClearColor(0x000006, 1);
-
-    // place the camera so the real cluster is visible on boot
-    const world = getWorld();
-    // Prefer sim radius if engine exposes it, else approximate from params via world builder
-    const radius = (engine as any).radius ?? 200_000;
-    const dist = Math.max(20, radius * 2.2);
-    // If the renderer has a focusPoint helper, keep using it so UI overlays/motion stay in sync
-    rendererHandle.current?.focusPoint?.(0, 0, 0, dist);
-  }, [engine]);
-
   return (
     <GestureDetector gesture={gesture}>
       <View style={{ flex: 1, position: "relative" }} onLayout={onLayout}>
@@ -240,11 +203,6 @@ export const GLScene = React.forwardRef<GLSceneHandle, Props>(function GLScene(
               onFps,
               rendererRef,
             });
-
-            // After renderer+scene+camera exist, attach the real-sim stars
-            // (initRenderer should populate threeRefs.current.scene/camera)
-            // We defer to the next tick to ensure they're set.
-            setTimeout(ensureSimStars, 0);
           }}
         />
 

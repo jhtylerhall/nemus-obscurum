@@ -4,9 +4,10 @@ import * as THREE from "three";
 
 import { adaptEngine, sampleCivs } from "./engineAdapter";
 import type { CameraState, RaycastRefs } from "./types";
+import { createBackgroundStars } from "./BackgroundStars";
 
 // ---------- Tunables ----------
-const CAMERA_FAR = 5000;
+const CAMERA_FAR = 20000;
 const STAR_U_SCALE = 220.0; // bigger point size at distance
 const STAR_U_MAX = 24.0; // px * pixelRatio
 const CIV_U_MAX = 28.0; // px * pixelRatio
@@ -49,38 +50,6 @@ void main(){
   gl_FragColor = vec4(vColor, a);
 }`;
 
-// ---------- background: parallax stars + soft nebula ----------
-function makeOuterStars(n: number, R: number) {
-  const g = new THREE.BufferGeometry();
-  const p = new Float32Array(n * 3);
-  const c = new Float32Array(n * 3);
-  for (let i = 0; i < n; i++) {
-    const u = Math.random(),
-      v = Math.random();
-    const theta = 2 * Math.PI * u;
-    const cosPhi = 2 * v - 1;
-    const sinPhi = Math.sqrt(Math.max(0, 1 - cosPhi * cosPhi));
-    const r = R * (0.94 + 0.12 * Math.random());
-    p[i * 3 + 0] = r * sinPhi * Math.cos(theta);
-    p[i * 3 + 1] = r * cosPhi * 0.6;
-    p[i * 3 + 2] = r * sinPhi * Math.sin(theta);
-    const t = Math.random();
-    c[i * 3 + 0] = 0.75 + 0.25 * t * 0.2;
-    c[i * 3 + 1] = 0.82 + 0.18 * t;
-    c[i * 3 + 2] = 0.95 + 0.05 * Math.random();
-  }
-  g.setAttribute("position", new THREE.BufferAttribute(p, 3));
-  g.setAttribute("color", new THREE.BufferAttribute(c, 3));
-  const m = new THREE.PointsMaterial({
-    size: 2,
-    sizeAttenuation: true,
-    vertexColors: true,
-    transparent: true,
-  });
-  const mesh = new THREE.Points(g, m);
-  mesh.frustumCulled = false;
-  return mesh;
-}
 function makeNebulaSprite(
   size: number,
   tint: THREE.ColorRepresentation,
@@ -114,6 +83,7 @@ function makeNebulaSprite(
     transparent: true,
     blending: THREE.AdditiveBlending,
     depthWrite: false,
+    depthTest: false,
   });
   const sprite = new THREE.Sprite(mat);
   sprite.scale.setScalar(R * 8);
@@ -245,19 +215,33 @@ export function initRenderer(gl: any, opts: InitOpts): RendererHandle {
   threeRefs.current.scene = scene;
   threeRefs.current.raycaster = new THREE.Raycaster();
 
-  // background
-  const R = ((engine as any).radius ?? 50) * 30;
-  const bgStars = makeOuterStars(3000, R);
-  scene.add(bgStars);
+  // background: sprite-based stars locked to the camera for an infinite sky
+  const bgRadius = Math.max(8000, ((engine as any).radius ?? 50) * 120);
+  const backgroundStars = createBackgroundStars({
+    count: 4800,
+    radius: bgRadius,
+    pixelRatio: pr,
+    seed: 11,
+    twinkleStrength: 0.06,
+  });
+  scene.add(backgroundStars.points);
+  threeRefs.current.bgStars = backgroundStars.points;
+
   const nebA = makeNebulaSprite(256, "#6cc3ff", 1);
   const nebB = makeNebulaSprite(256, "#f48fb1", 2);
   const nebC = makeNebulaSprite(256, "#88f7c5", 3);
-  nebA.position.set(-R * 0.4, R * 0.15, -R * 0.6);
-  nebB.position.set(R * 0.6, -R * 0.25, R * 0.2);
-  nebC.position.set(-R * 0.2, -R * 0.3, R * 0.7);
+  nebA.position.set(-bgRadius * 0.25, bgRadius * 0.12, -bgRadius * 0.5);
+  nebB.position.set(bgRadius * 0.4, -bgRadius * 0.2, bgRadius * 0.18);
+  nebC.position.set(-bgRadius * 0.18, -bgRadius * 0.28, bgRadius * 0.6);
+  nebA.renderOrder = -900;
+  nebB.renderOrder = -900;
+  nebC.renderOrder = -900;
   scene.add(nebA, nebB, nebC);
-  threeRefs.current.bgStars = bgStars;
   threeRefs.current.nebulas = [nebA, nebB, nebC];
+
+  const maxViewDistance = Math.max(CAMERA_FAR, bgRadius * 1.2);
+  camera.far = maxViewDistance * 1.1;
+  camera.updateProjectionMatrix();
 
   // grid/axes for orientation
   const grid = new THREE.GridHelper(
@@ -468,7 +452,7 @@ export function initRenderer(gl: any, opts: InitOpts): RendererHandle {
     );
     cam.current.dist = Math.max(
       5,
-      Math.min(CAMERA_FAR, cam.current.dist - stickR.current.y * dt * 40)
+      Math.min(maxViewDistance, cam.current.dist - stickR.current.y * dt * 40)
     );
 
     const { yaw, pitch, dist } = cam.current;
@@ -479,6 +463,9 @@ export function initRenderer(gl: any, opts: InitOpts): RendererHandle {
     camera.updateProjectionMatrix();
     camera.position.set(cx, cy, cz);
     camera.lookAt(lookAt.current);
+
+    // Keep the background sphere centered on the camera so stars stay "infinitely" far.
+    backgroundStars.update(camera, now / 1000);
 
     if (E.starCount > lastStarCount) {
       for (let i = lastStarCount; i < E.starCount; i++) {
